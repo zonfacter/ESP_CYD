@@ -1,13 +1,15 @@
-# ESP32 Display & Touch Test
+# ESP32 Solar Monitor
 
 ## Übersicht
-Dieses Projekt demonstriert die Verwendung eines ESP32-Controllers mit einem TFT-Display und Touchscreen. Das Projekt zeigt, wie man beide Komponenten korrekt initialisiert und verwendet, sowie die RGB-LED zur visuellen Rückmeldung ansteuert.
+Dieses Projekt ist ein umfassender Solar-Monitor für ESP32, der Daten von einem Solar Assistant MQTT-Broker empfängt und auf einem TFT-Display anzeigt. Der Monitor bietet Echtzeit-Informationen zu PV-Leistung, Batteriestatus, Netzeinspeisung und vielem mehr.
+
+Die aktuelle Version 0.4.0 bietet ein modulares, konfigurierbares System mit einem dynamischen Menü und verschiedenen Detailansichten zur Überwachung einer Solaranlage.
 
 ## Hardware
 - ESP32 Entwicklungsboard
 - ILI9341 TFT-Display (320x240)
 - XPT2046 Touchscreen-Controller
-- RGB-LED (gemeinsame Anode)
+- MQTT-fähiger Solar Assistant (z.B. Victron GX-Geräte)
 
 ## Pin-Belegung
 
@@ -27,12 +29,6 @@ Dieses Projekt demonstriert die Verwendung eines ESP32-Controllers mit einem TFT
 - TOUCH_CLK: 25
 - TOUCH_CS: 33
 
-### RGB-LED
-- RED: GPIO 4
-- GREEN: GPIO 16
-- BLUE: GPIO 17
-- Anmerkung: Die LED hat eine gemeinsame Anode, daher ist LOW = AN und HIGH = AUS
-
 ## Konfiguration
 
 ### platformio.ini
@@ -48,6 +44,8 @@ upload_speed = 921600
 lib_deps =
     bodmer/TFT_eSPI @ ^2.5.43
     PaulStoffregen/XPT2046_Touchscreen
+    bblanchon/ArduinoJson @ ^7.3.1
+    knolleary/PubSubClient @ ^2.8
 
 build_flags =
     -D USER_SETUP_LOADED=1
@@ -66,244 +64,291 @@ build_flags =
     -D TOUCH_CS=33
 ```
 
-## Vollständiger Code
+# Changelog für Solar Monitor v0.4.0
 
-```cpp
-#include <Arduino.h>
-#include <TFT_eSPI.h>
-#include <SPI.h>
-#include <XPT2046_Touchscreen.h>
+## Neue Funktionen
+- Modulare Strukturierung des Codes mit spezialisierten Manager-Klassen
+- JSON-basierte Konfiguration für einfachere Anpassungen
+- MQTT-Verbindung zur Datenerfassung vom Solar Assistant
+- Verbesserte WLAN-Verbindung mit robuster Fehlerbehandlung
+- Dynamisch ladbares Menüsystem aus JSON-Konfiguration
+- Detailansichten für verschiedene Solarsystem-Parameter
+- Simulation-Modus für Testbetrieb ohne tatsächliche Solaranlage
 
-TFT_eSPI tft = TFT_eSPI();
+## Verbesserungen
+- Zuverlässigere WLAN-Verbindung durch optimierte Verbindungsroutine
+- Bessere Fehlerbehandlung und Debug-Informationen
+- Touchscreen-Kalibrierung und -Verarbeitung optimiert
+- Dynamische Menüstruktur, die über JSON-Dateien anpassbar ist
+- Klare Trennung von Daten, Anzeige und Steuerungslogik
 
-// Touchscreen pins
-#define XPT2046_IRQ 36
-#define XPT2046_MOSI 32
-#define XPT2046_MISO 39
-#define XPT2046_CLK 25
-#define XPT2046_CS 33
+## Fehlerbehebungen
+- Behoben: Probleme mit der WLAN-Verbindung
+- Behoben: Fehlerhafte JSON-String-Literale in der Konfiguration
+- Behoben: Touch-Erkennung außerhalb des gültigen Bildschirmbereichs
 
-// RGB LED pins
-#define LED_RED_PIN 4
-#define LED_GREEN_PIN 16
-#define LED_BLUE_PIN 17
+# Dokumentation/Anleitung
 
-// Hintergrundbeleuchtung
-#define TFT_BL 21
+## Systemarchitektur
 
-// Eine separate SPI-Instanz für den Touchscreen
-SPIClass touchSPI = SPIClass(VSPI);
-XPT2046_Touchscreen touch(XPT2046_CS, XPT2046_IRQ);
+Der ESP32 Solar Monitor verwendet eine modulare Architektur mit mehreren Manager-Klassen:
 
-// Kalibrierungswerte für den Touchscreen
-#define TOUCH_MIN_X 200
-#define TOUCH_MAX_X 3700
-#define TOUCH_MIN_Y 240
-#define TOUCH_MAX_Y 3800
+1. **ConfigManager**: Verwaltet die Konfigurationsdateien im SPIFFS-Dateisystem
+2. **DataManager**: Speichert und verarbeitet die Solardaten
+3. **MenuSystem**: Generiert und steuert das UI-Menüsystem
+4. **MqttManager**: Kommuniziert mit dem MQTT-Broker
+5. **ViewManager**: Rendert die verschiedenen Detailansichten
 
-#define SCREEN_WIDTH 320
-#define SCREEN_HEIGHT 240
+Diese modulare Struktur ermöglicht eine einfache Erweiterung und Wartung des Codes.
 
-// Status-Tracking für Touch
-bool wasTouch = false;
-unsigned long lastTouchTime = 0;
+## Konfigurationsdateien
 
-// LED-Farben anhand der beobachteten Werte
-void setLEDRed() {
-    digitalWrite(LED_RED_PIN, LOW);
-    digitalWrite(LED_GREEN_PIN, HIGH);
-    digitalWrite(LED_BLUE_PIN, HIGH);
-}
+Der Solar Monitor verwendet drei JSON-Konfigurationsdateien:
 
-void setLEDCyan() {
-    digitalWrite(LED_RED_PIN, HIGH);
-    digitalWrite(LED_GREEN_PIN, LOW);
-    digitalWrite(LED_BLUE_PIN, LOW);
-}
+1. **config.json**: Enthält grundlegende Einstellungen (WLAN, MQTT, Display)
+2. **menu.json**: Definiert die Menüstruktur
+3. **mqtt_topics.json**: Definiert die MQTT-Topics für Solardaten
 
-void setup() {
-    Serial.begin(115200);
-    Serial.println("Touch-Test mit korrigierten LED-Farben");
-    
-    // LEDs initialisieren
-    pinMode(LED_RED_PIN, OUTPUT);
-    pinMode(LED_GREEN_PIN, OUTPUT);
-    pinMode(LED_BLUE_PIN, OUTPUT);
-    
-    // LED Standby-Farbe (Rot)
-    setLEDRed();
-    
-    // Hintergrundbeleuchtung aktivieren
-    pinMode(TFT_BL, OUTPUT);
-    digitalWrite(TFT_BL, HIGH);
-    
-    // Display initialisieren
-    tft.init();
-    tft.setRotation(1);
-    tft.fillScreen(TFT_BLACK);
-    
-    // Touchscreen-SPI initialisieren
-    touchSPI.begin(XPT2046_CLK, XPT2046_MISO, XPT2046_MOSI, XPT2046_CS);
-    touch.begin(touchSPI);
-    
-    // UI zeichnen
-    tft.setTextSize(2);
-    tft.setTextColor(TFT_WHITE);
-    tft.setCursor(20, 20);
-    tft.println("Touch-Test");
-    
-    tft.setTextSize(1);
-    tft.setCursor(20, 60);
-    tft.println("Beruehren und ziehen Sie auf dem Display");
-    tft.setCursor(20, 80);
-    tft.println("LED: Rot=Bereit, Cyan=Touch");
-    
-    tft.drawRect(10, 100, 300, 130, TFT_BLUE);
-    
-    Serial.println("Setup abgeschlossen, warte auf Touch-Events");
-}
-
-void loop() {
-    bool currentlyTouched = touch.tirqTouched();
-    
-    // Neue Berührung erkannt
-    if (currentlyTouched && !wasTouch) {
-        wasTouch = true;
-        lastTouchTime = millis();
-        
-        // LED auf Cyan setzen bei Berührung
-        setLEDCyan();
-        
-        // Touchscreen abfragen
-        TS_Point p = touch.getPoint();
-        
-        // Rohdaten ausgeben
-        Serial.print("Touch-Start: X=");
-        Serial.print(p.x);
-        Serial.print(", Y=");
-        Serial.print(p.y);
-        Serial.print(", Z=");
-        Serial.println(p.z);
-        
-        // Koordinaten auf Display-Größe umrechnen
-        int displayX = map(p.x, TOUCH_MIN_X, TOUCH_MAX_X, 0, SCREEN_WIDTH);
-        int displayY = map(p.y, TOUCH_MIN_Y, TOUCH_MAX_Y, 0, SCREEN_HEIGHT);
-        
-        // Letzten Wert löschen
-        tft.fillRect(20, 130, 280, 90, TFT_BLACK);
-        
-        // Punkt zeichnen
-        tft.fillCircle(displayX, displayY, 5, TFT_RED);
-        
-        // Koordinaten anzeigen
-        tft.setTextSize(1);
-        tft.setTextColor(TFT_WHITE);
-        tft.setCursor(20, 140);
-        tft.print("X: ");
-        tft.print(displayX);
-        tft.print(", Y: ");
-        tft.print(displayY);
-        
-        tft.setCursor(20, 160);
-        tft.print("Rohwerte - X: ");
-        tft.print(p.x);
-        tft.print(", Y: ");
-        tft.print(p.y);
-        
-        tft.setCursor(20, 180);
-        tft.setTextColor(TFT_CYAN);
-        tft.print("Touch aktiv - LED Cyan");
-    }
-    // Touch weiterhin gedrückt
-    else if (currentlyTouched && wasTouch) {
-        // Alle 100ms Touch-Position aktualisieren
-        if (millis() - lastTouchTime > 100) {
-            lastTouchTime = millis();
-            
-            TS_Point p = touch.getPoint();
-            
-            // Koordinaten auf Display-Größe umrechnen
-            int displayX = map(p.x, TOUCH_MIN_X, TOUCH_MAX_X, 0, SCREEN_WIDTH);
-            int displayY = map(p.y, TOUCH_MIN_Y, TOUCH_MAX_Y, 0, SCREEN_HEIGHT);
-            
-            // Nur den Punkt aktualisieren, ohne alles zu löschen
-            tft.fillCircle(displayX, displayY, 5, TFT_YELLOW);
-        }
-    }
-    // Touch wurde losgelassen
-    else if (!currentlyTouched && wasTouch) {
-        wasTouch = false;
-        Serial.println("Touch beendet");
-        
-        // LED zurück auf Rot
-        setLEDRed();
-        
-        tft.fillRect(20, 180, 280, 20, TFT_BLACK);
-        tft.setCursor(20, 180);
-        tft.setTextColor(TFT_RED);
-        tft.print("Touch beendet - LED Rot");
-        
-        // Kurze Pause
-        delay(50);
-    }
-    
-    // Systemstatus anzeigen
-    static unsigned long lastUpdate = 0;
-    if (millis() - lastUpdate > 1000) {
-        lastUpdate = millis();
-        
-        // Zeit in der Ecke anzeigen
-        tft.fillRect(SCREEN_WIDTH - 50, 5, 45, 10, TFT_BLACK);
-        tft.setCursor(SCREEN_WIDTH - 50, 5);
-        tft.setTextColor(TFT_WHITE);
-        tft.print(millis()/1000);
-        tft.print("s");
-    }
-    
-    // Kleine Pause
-    delay(10);
+### Beispiel config.json:
+```json
+{
+  "wlan": {
+    "ssid": "MeinWLAN",
+    "password": "MeinPasswort"
+  },
+  "mqtt": {
+    "broker": "192.168.1.100",
+    "port": 1883,
+    "client_id_prefix": "ESP32SolarMonitor-"
+  },
+  "display": {
+    "brightness": 100,
+    "timeout": 600,
+    "theme": "dark"
+  },
+  "touch": {
+    "min_x": 200,
+    "max_x": 3700,
+    "min_y": 240,
+    "max_y": 3800
+  },
+  "simulation_mode": false,
+  "update_interval": 5000
 }
 ```
 
-## Funktionalitäten
+## Menüsystem: Struktur und Erweiterung
 
-- **Display-Initialisierung**: Konfiguriert das TFT-Display mit den richtigen Pins
-- **Touchscreen-Steuerung**: Verwendet eine separate SPI-Instanz für den XPT2046 Touchscreen
-- **Touch-Erkennung**: Erkennt kontinuierlich Berührungen und zeigt die Koordinaten an
-- **LED-Feedback**: Wechselt die RGB-LED-Farbe zwischen Rot (Standby) und Cyan (Touch)
-- **Visuelle Rückmeldung**: Zeichnet Punkte auf dem Display, wo der Touchscreen berührt wird
+### Grundlegende Struktur
+Das Menüsystem basiert auf einer JSON-Datei (`menu.json`), die die komplette Menüstruktur definiert. Die Grundstruktur sieht wie folgt aus:
 
-## Verwendung
+```json
+{
+  "tabs": [
+    {
+      "title": "Tab-Titel",
+      "items": [
+        {
+          "name": "Menüpunkt-Name",
+          "function": "functionName",
+          "icon": "icon-name"
+        },
+        // Weitere Menüpunkte...
+      ]
+    },
+    // Weitere Tabs...
+  ]
+}
+```
 
-Nach dem Hochladen des Codes:
-1. Das Display zeigt einen Startbildschirm mit Anweisungen
-2. Berühren Sie das Display, um die Touch-Erkennung zu testen
-3. Die LED wechselt die Farbe bei Berührung (rot → cyan)
-4. Die Touch-Koordinaten werden auf dem Display angezeigt
-5. Ziehen Sie über das Display, um einen Pfad zu zeichnen
+### Erweiterung des Menüs
+Um das Menü zu erweitern oder anzupassen:
 
-## Changelog
+1. **Öffne die `menu.json` Datei**:
+   Die Datei befindet sich im SPIFFS-Speicher und kann über den ConfigManager bearbeitet werden.
 
-### v0.1.0 (Aktuelle Version)
-- Initiale Implementierung des Display- und Touch-Tests
-- Korrekte Konfiguration der TFT_eSPI-Bibliothek
-- Implementierung einer separaten SPI-Instanz für den Touchscreen
-- Kalibrierung des Touchscreens
-- Korrektur der LED-Pin-Belegung und der Ansteuerungslogik
-- Kontinuierliche Touch-Erkennung mit visueller Rückmeldung
+2. **Füge neue Tabs oder Menüpunkte hinzu**:
+   - Für einen neuen Tab: Füge ein neues Objekt zum "tabs"-Array hinzu
+   - Für einen neuen Menüpunkt: Füge ein neues Objekt zum "items"-Array eines bestehenden Tabs hinzu
+
+3. **Definiere die Funktionalität**:
+   Jeder Menüpunkt benötigt einen `function`-Parameter, der auf eine implementierte Funktion in der ViewManager-Klasse verweist.
+
+4. **Implementiere die Ansichtsfunktion**:
+   In der `ViewManager.cpp` musst du die entsprechende Funktion implementieren, die aufgerufen wird, wenn der Menüpunkt ausgewählt wird.
+
+### Beispiel für einen neuen Menüpunkt
+
+```json
+{
+  "name": "Wetterdaten",
+  "function": "showWeatherData",
+  "icon": "cloud"
+}
+```
+
+Dann in ViewManager.cpp:
+
+```cpp
+void ViewManager::showWeatherData() {
+  // Display-Hintergrund löschen
+  tft.fillScreen(BACKGROUND);
+  
+  // Überschrift
+  drawHeader("Wetterdaten");
+  
+  // Hier die eigentliche Anzeigefunktionalität implementieren
+  tft.setCursor(20, 60);
+  tft.print("Temperatur: ");
+  tft.print(weatherData.temperature);
+  tft.println(" °C");
+  
+  // Weitere Anzeigeelemente...
+  
+  // Zurück-Button
+  drawBackButton();
+}
+```
+
+## Funktionen der Grafiken/Views
+
+### Hauptansichten
+
+1. **Solar Status**:
+   Zeigt einen Überblick über den aktuellen Status des Solarsystems mit den wichtigsten Werten wie PV-Leistung, Batteriestatus und Netzeinspeisung.
+
+2. **Batterie Status**:
+   Detaillierte Anzeige des Batteriestatus, einschließlich Ladezustand (SoC), aktuelle Ladeleistung, und Spannung.
+
+3. **Netzstatus**:
+   Zeigt den aktuellen Netzbezug oder die Einspeisung ins Netz an, mit visueller Darstellung der Richtung und Leistung.
+
+4. **PV Leistung**:
+   Detaillierte Anzeige der aktuellen PV-Leistung, mit Tages- und Gesamterträgen.
+
+5. **Verbrauch**:
+   Anzeige des aktuellen Stromverbrauchs des Hauses mit historischen Daten.
+
+6. **Autarkie**:
+   Visualisierung der aktuellen Autarkie, also wie viel des Strombedarfs durch eigene Erzeugung gedeckt wird.
+
+7. **Tageswerte**:
+   Zusammenfassung der wichtigsten Werte des aktuellen Tages: Ertrag, Verbrauch, Einspeisung, Bezug.
+
+8. **Statistik**:
+   Längerfristige statistische Daten zu Ertrag, Verbrauch, und Autarkie.
+
+### Steuerungsansichten
+
+Diese Ansichten sind für die zukünftige Erweiterung vorbereitet, um verschiedene Hausgeräte zu steuern:
+
+- Heizung
+- Pool
+- Garten
+- Licht
+- Steckdosen
+- Lüftung
+- Rollladen
+- Kameras
+
+### Funktionen der Anzeigeelemente
+
+1. **Header**: 
+   Ein einheitlicher Header mit Titel und Zurück-Button für alle Detailansichten.
+
+2. **Wertanzeigen**:
+   Numerische und textuelle Darstellung der Daten mit passenden Einheiten.
+
+3. **Farbkodierung**:
+   - Grün: Positive Werte (z.B. Einspeisung ins Netz, Batterieladung)
+   - Rot: Negative Werte (z.B. Netzbezug, Batterieentladung)
+   - Gelb: Batteriestatus
+   - Blau: Netzwerte
+
+4. **Zurück-Button**:
+   Ermöglicht die Navigation zurück zum Hauptmenü.
+
+## MQTT-Integration
+
+Der Solar Monitor verwendet MQTT, um Daten von einem Solar Assistant zu empfangen. Die Standard-MQTT-Topics sind:
+
+- **Batterieladezustand**: `solar_assistant/total/battery_state_of_charge/state`
+- **Verbrauchsleistung**: `solar_assistant/inverter_1/load_power_essential/state`
+- **Netzleistung**: `solar_assistant/inverter_1/grid_power/state`
+- **PV-Leistung**: `solar_assistant/inverter_1/pv_power/state`
+- **Batterieleistung**: `solar_assistant/total/battery_power/state`
+- **Batteriespannung**: `solar_assistant/inverter_1/battery_voltage/state`
+- **Tagesertrag**: `solar_assistant/inverter_1/energy_day/state`
+- **Gesamtertrag**: `solar_assistant/inverter_1/energy_total/state`
+
+Diese können in der `mqtt_topics.json` angepasst werden.
+
+## Wie alles zusammenarbeitet
+
+1. **Startvorgang**:
+   - SPIFFS-Initialisierung
+   - Laden der Konfigurationen
+   - WLAN-Verbindung
+   - MQTT-Verbindung
+   - Menü-Initialisierung
+
+2. **Normaler Betrieb**:
+   - MqttManager empfängt regelmäßig neue Daten
+   - DataManager aktualisiert die Werte
+   - Bei Touch-Events verarbeitet das MenuSystem die Interaktion
+   - ViewManager zeigt die gewählte Detailansicht an
+
+3. **Fehlerbehandlung**:
+   - Bei WLAN- oder MQTT-Fehlern schaltet das System in den Simulationsmodus
+   - Automatische Wiederverbindungsversuche
+
+## Erweiterungsmöglichkeiten
+
+1. **Neue Datenquellen**:
+   Du kannst weitere MQTT-Topics in der `mqtt_topics.json` hinzufügen, um mehr Daten aus deinem Solar Assistant zu erfassen.
+
+2. **Neue Visualisierungen**:
+   Implementiere neue Ansichtsfunktionen in ViewManager für andere Darstellungen wie Graphen oder Diagramme.
+
+3. **Steuerungsfunktionen**:
+   Füge MQTT-Publish-Funktionalität hinzu, um Steuerungsbefehle an dein Hausautomationssystem zu senden.
+
+4. **Datenlogging**:
+   Implementiere eine Funktion zum Speichern historischer Daten auf einer SD-Karte oder im SPIFFS.
+
+5. **Webinterface**:
+   Füge einen Webserver hinzu, um die Konfiguration über einen Browser zu ermöglichen.
+
+## Tipps für die Fehlersuche
+
+1. **Serieller Monitor**:
+   Die DEBUG-Ausgaben helfen bei der Diagnose von Verbindungs- und Datenproblemen.
+
+2. **MQTT-Tests**:
+   Nutze einen MQTT-Client wie MQTT Explorer, um zu prüfen, ob die erwarteten Daten vom Broker ankommen.
+
+3. **JSON-Validierung**:
+   Überprüfe deine JSON-Konfigurationen mit einem Online-Validator, bevor du sie auf das Gerät lädst.
+
+4. **WiFi-Verbindung**:
+   Bei Verbindungsproblemen die RSSI-Werte überprüfen und gegebenenfalls den ESP32 näher am Router platzieren.
 
 ## Bekannte Probleme
-- Keine bekannten Probleme im aktuellen Stand
+- Die WLAN-Verbindung kann unter bestimmten Umständen instabil sein; die aktuelle Version enthält robustere Verbindungsroutinen.
+- Bei einigen Routern kann die Verbindungszeit länger als erwartet sein.
 
-## Nächste Schritte
-- WLAN-Konnektivität implementieren
-- MQTT-Client hinzufügen
-- Menüsystem mit Schaltflächen erstellen
-- Sensorwerte anzeigen und visualisieren
+## Nächste Schritte und geplante Features
+- Graphische Darstellung der Daten über Zeiträume
+- Statistische Auswertungen der Solardaten
+- Integration weiterer Sensoren (z.B. Temperatur, Wetter)
+- Steuerung von Hausautomation basierend auf Solarertrag
+- Over-the-Air Updates
 
 ## Abhängigkeiten
 - TFT_eSPI: Display-Ansteuerung
 - XPT2046_Touchscreen: Touchscreen-Ansteuerung
+- ArduinoJson: JSON-Verarbeitung
+- PubSubClient: MQTT-Kommunikation
 
 ## Lizenz
 Frei für den persönlichen und kommerziellen Gebrauch.
