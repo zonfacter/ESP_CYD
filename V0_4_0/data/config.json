@@ -1,0 +1,24 @@
+{
+  "wlan": {
+    "ssid": "YOUR_SSID",
+    "password": "YOUR_PASSWORD"
+  },
+  "mqtt": {
+    "broker": "IP_ADRESS_MQTT_BROKER",
+    "port": 1883,
+    "client_id_prefix": "ESP32SolarMonitor-"
+  },
+  "display": {
+    "brightness": 100,
+    "timeout": 600,
+    "theme": "dark"
+  },
+  "touch": {
+    "min_x": 200,
+    "max_x": 3700,
+    "min_y": 240,
+    "max_y": 3800
+  },
+  "simulation_mode": false,
+  "update_interval": 5000
+}

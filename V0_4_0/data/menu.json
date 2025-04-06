@@ -1,0 +1,139 @@
+{
+  "tabs": [
+    {
+      "title": "System",
+      "items": [
+        {
+          "name": "Solar Status",
+          "function": "drawSolarStatus",
+          "icon": "sun"
+        },
+        {
+          "name": "Batterie Status",
+          "function": "drawBatteryStatus",
+          "icon": "battery"
+        },
+        {
+          "name": "Netzstatus",
+          "function": "drawGridStatus",
+          "icon": "grid"
+        },
+        {
+          "name": "PV Leistung",
+          "function": "drawPvPower",
+          "icon": "solar"
+        },
+        {
+          "name": "Verbrauch",
+          "function": "drawConsumption",
+          "icon": "home"
+        },
+        {
+          "name": "Autarkie",
+          "function": "drawAutarky",
+          "icon": "leaf"
+        },
+        {
+          "name": "Tageswerte",
+          "function": "drawDailyValues",
+          "icon": "calendar"
+        },
+        {
+          "name": "Statistik",
+          "function": "drawStatistics",
+          "icon": "chart"
+        }
+      ]
+    },
+    {
+      "title": "Steuerung",
+      "items": [
+        {
+          "name": "Heizung",
+          "function": "controlHeating",
+          "icon": "heat"
+        },
+        {
+          "name": "Pool",
+          "function": "controlPool",
+          "icon": "water"
+        },
+        {
+          "name": "Garten",
+          "function": "controlGarden",
+          "icon": "plant"
+        },
+        {
+          "name": "Licht",
+          "function": "controlLight",
+          "icon": "bulb"
+        },
+        {
+          "name": "Steckdosen",
+          "function": "controlPlugs",
+          "icon": "plug"
+        },
+        {
+          "name": "Lüftung",
+          "function": "controlVentilation",
+          "icon": "fan"
+        },
+        {
+          "name": "Rollladen",
+          "function": "controlShutters",
+          "icon": "window"
+        },
+        {
+          "name": "Kameras",
+          "function": "controlCameras",
+          "icon": "camera"
+        }
+      ]
+    },
+    {
+      "title": "Einstellungen",
+      "items": [
+        {
+          "name": "WLAN Setup",
+          "function": "setupWifi",
+          "icon": "wifi"
+        },
+        {
+          "name": "MQTT Setup",
+          "function": "setupMqtt",
+          "icon": "cloud"
+        },
+        {
+          "name": "Display",
+          "function": "setupDisplay",
+          "icon": "monitor"
+        },
+        {
+          "name": "Systeminfo",
+          "function": "showSystemInfo",
+          "icon": "info"
+        },
+        {
+          "name": "Updates",
+          "function": "checkUpdates",
+          "icon": "update"
+        },
+        {
+          "name": "Logs",
+          "function": "viewLogs",
+          "icon": "file"
+        },
+        {
+          "name": "Neustart",
+          "function": "restartSystem",
+          "icon": "refresh"
+        },
+        {
+          "name": "Werkseinstellungen",
+          "function": "factoryReset",
+          "icon": "trash"
+        }
+      ]
+    }
+  ]
+}

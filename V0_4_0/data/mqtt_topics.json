@@ -1,0 +1,60 @@
+{
+  "topics": [
+    {
+      "name": "battery_soc",
+      "topic": "solar_assistant/total/battery_state_of_charge/state",
+      "description": "Batterieladezustand in Prozent",
+      "unit": "%",
+      "color": "TFT_YELLOW"
+    },
+    {
+      "name": "load_power",
+      "topic": "solar_assistant/inverter_1/load_power_essential/state",
+      "description": "Verbrauchsleistung",
+      "unit": "W",
+      "color": "TFT_RED"
+    },
+    {
+      "name": "grid_power",
+      "topic": "solar_assistant/inverter_1/grid_power/state",
+      "description": "Netzleistung (negativ = Einspeisung)",
+      "unit": "W",
+      "color": "TFT_BLUE"
+    },
+    {
+      "name": "pv_power",
+      "topic": "solar_assistant/inverter_1/pv_power/state",
+      "description": "PV-Leistung",
+      "unit": "W",
+      "color": "TFT_GREEN"
+    },
+    {
+      "name": "battery_power",
+      "topic": "solar_assistant/total/battery_power/state",
+      "description": "Batterieleistung",
+      "unit": "W",
+      "color": "TFT_PURPLE"
+    },
+    {
+      "name": "battery_voltage",
+      "topic": "solar_assistant/inverter_1/battery_voltage/state",
+      "description": "Batteriespannung",
+      "unit": "V",
+      "color": "TFT_CYAN"
+    },
+    {
+      "name": "daily_yield",
+      "topic": "solar_assistant/inverter_1/energy_day/state",
+      "description": "Tagesertrag",
+      "unit": "kWh",
+      "color": "TFT_ORANGE"
+    },
+    {
+      "name": "total_yield",
+      "topic": "solar_assistant/inverter_1/energy_total/state",
+      "description": "Gesamtertrag",
+      "unit": "kWh",
+      "color": "TFT_ORANGE"
+    }
+  ]
+}
