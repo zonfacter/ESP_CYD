@@ -10,9 +10,13 @@
 extern TFT_eSPI tft;
 extern MqttManager mqttManager;
 extern DataManager dataManager;
+extern ConfigManager configManager;
+
 
 // Globale Instanz
 // ViewManager viewManager(tft, dataManager); // In C++ darf eine globale Variable nur einmal definiert werden.
+
+// Diese Änderungen sollten in ViewManager.cpp eingefügt werden
 
 ViewManager::ViewManager(TFT_eSPI &tft, DataManager &dataManager) 
   : tft(tft), dataManager(dataManager) {
@@ -34,6 +38,24 @@ ViewManager::ViewManager(TFT_eSPI &tft, DataManager &dataManager)
   viewFunctions["setupMqtt"] = &ViewManager::setupMqtt;
   viewFunctions["setupDisplay"] = &ViewManager::setupDisplay;
   viewFunctions["showSystemInfo"] = &ViewManager::showSystemInfo;
+
+  // Registriere alle Update-Funktionen in der Map
+  updateFunctions["drawSolarStatus"] = &ViewManager::updateSolarStatus;
+  updateFunctions["drawBatteryStatus"] = &ViewManager::updateBatteryStatus;
+  updateFunctions["drawGridStatus"] = &ViewManager::updateGridStatus;
+  updateFunctions["drawPvPower"] = &ViewManager::updatePvPower;
+  updateFunctions["drawConsumption"] = &ViewManager::updateConsumption;
+  updateFunctions["drawAutarky"] = &ViewManager::updateAutarky;
+  updateFunctions["drawDailyValues"] = &ViewManager::updateDailyValues;
+  updateFunctions["drawStatistics"] = &ViewManager::updateStatistics;
+  
+  updateFunctions["controlHeating"] = &ViewManager::updateHeating;
+  updateFunctions["controlPool"] = &ViewManager::updatePool;
+  
+  updateFunctions["setupWifi"] = &ViewManager::updateWifi;
+  updateFunctions["setupMqtt"] = &ViewManager::updateMqtt;
+  updateFunctions["setupDisplay"] = &ViewManager::updateDisplay;
+  updateFunctions["showSystemInfo"] = &ViewManager::updateSystemInfo;
 }
 
 bool ViewManager::showView(const String &functionName) {
@@ -54,6 +76,12 @@ bool ViewManager::showView(const String &functionName) {
   // Trennlinie
   tft.drawLine(10, 45, SCREEN_WIDTH - 10, 45, TFT_DARKGREY);
   
+  // Setze den Flag für initialen Draw
+  isInitialDraw = true;
+  
+  // Speichere aktuelle Daten als Referenz
+  lastDrawnData = dataManager.getData();
+  
   // Prüfe, ob die Funktion existiert
   auto it = viewFunctions.find(functionName);
   if (it != viewFunctions.end()) {
@@ -63,6 +91,9 @@ bool ViewManager::showView(const String &functionName) {
     
     // Statusleiste zeichnen
     drawStatusBar();
+    
+    // Nach dem ersten Zeichnen Flag zurücksetzen
+    isInitialDraw = false;
     
     return true;
   } else {
@@ -74,10 +105,442 @@ bool ViewManager::showView(const String &functionName) {
     
     drawStatusBar();
     
+    isInitialDraw = false;
+    
     return false;
   }
 }
 
+bool ViewManager::updateView() {
+  // Nur aktualisieren, wenn wir eine aktuelle Ansicht haben
+  if (currentView.length() == 0) {
+    return false;
+  }
+  
+  // Prüfe, ob die Update-Funktion existiert
+  auto it = updateFunctions.find(currentView);
+  if (it != updateFunctions.end()) {
+    // Aktualisiere Statusleiste ohne Flackern
+    drawStatusBar();
+    
+    // Funktion aufrufen
+    UpdateFunction func = it->second;
+    (this->*func)();
+    
+    // Aktualisiere gespeicherte Daten
+    lastDrawnData = dataManager.getData();
+    
+    return true;
+  }
+  
+  return false;
+}
+
+// Beispielupdater für SolarStatus
+void ViewManager::updateSolarStatus() {
+  SolarData& currentData = dataManager.getData();
+  tft.setTextSize(1);
+  
+  // PV Leistung aktualisieren, wenn sich der Wert geändert hat
+  if (currentData.pvPower != lastDrawnData.pvPower) {
+    // Lösche den alten Wert 
+    tft.fillRect(200, 80, 120, 10, BACKGROUND);
+    
+    // Neuen Wert schreiben
+    tft.setCursor(200, 80);
+    tft.setTextColor(TFT_GREEN, BACKGROUND);
+    tft.print(currentData.pvPower);
+    tft.print(" W");
+  }
+  
+  // Verbrauch aktualisieren, wenn sich der Wert geändert hat
+  if (currentData.loadPower != lastDrawnData.loadPower) {
+    // Lösche den alten Wert
+    tft.fillRect(200, 100, 120, 10, BACKGROUND);
+    
+    // Neuen Wert schreiben
+    tft.setCursor(200, 100);
+    tft.setTextColor(TFT_RED, BACKGROUND);
+    tft.print(currentData.loadPower);
+    tft.print(" W");
+  }
+  
+  // Netzbezug/Einspeisung aktualisieren
+  if (currentData.gridPower != lastDrawnData.gridPower) {
+    // Lösche den alten Wert
+    tft.fillRect(200, 120, 120, 10, BACKGROUND);
+    
+    // Neuen Wert schreiben
+    tft.setCursor(200, 120);
+    if (currentData.gridPower < 0) {
+      tft.setTextColor(TFT_GREEN, BACKGROUND); // Einspeisung
+      tft.print(abs(currentData.gridPower));
+      tft.print(" W (Einspeisung)");
+    } else {
+      tft.setTextColor(TFT_RED, BACKGROUND); // Bezug
+      tft.print(currentData.gridPower);
+      tft.print(" W (Bezug)");
+    }
+  }
+  
+  // Batterie aktualisieren
+  if (currentData.batteryPower != lastDrawnData.batteryPower) {
+    // Lösche den alten Wert
+    tft.fillRect(200, 140, 120, 10, BACKGROUND);
+    
+    // Neuen Wert schreiben
+    tft.setCursor(200, 140);
+    if (currentData.batteryPower > 0) {
+      tft.setTextColor(TFT_GREEN, BACKGROUND); // Laden
+      tft.print(currentData.batteryPower);
+      tft.print(" W (Laden)");
+    } else {
+      tft.setTextColor(TFT_RED, BACKGROUND); // Entladen
+      tft.print(abs(currentData.batteryPower));
+      tft.print(" W (Entladen)");
+    }
+  }
+  
+  // Autarkie aktualisieren
+  if (currentData.autarky != lastDrawnData.autarky) {
+    // Lösche den alten Wert
+    tft.fillRect(200, 160, 120, 10, BACKGROUND);
+    
+    // Neuen Wert schreiben
+    tft.setCursor(200, 160);
+    tft.setTextColor(TFT_CYAN, BACKGROUND);
+    tft.print(currentData.autarky);
+    tft.print(" %");
+  }
+  
+  // Batteriestand aktualisieren
+  if (currentData.batterySOC != lastDrawnData.batterySOC) {
+    // Lösche den alten Wert
+    tft.fillRect(200, 180, 120, 10, BACKGROUND);
+    
+    // Neuen Wert schreiben
+    tft.setCursor(200, 180);
+    tft.setTextColor(TFT_YELLOW, BACKGROUND);
+    tft.print(currentData.batterySOC);
+    tft.print(" %");
+  }
+}
+
+// Beispielupdater für BatteryStatus
+// Update-Funktion für die Batterieansicht
+void ViewManager::updateBatteryStatus() {
+  SolarData& currentData = dataManager.getData();
+  tft.setTextSize(1);
+  
+  // Batterieparameter aus der Konfiguration laden
+  JsonDocument config;
+  float batteryCapacityAh = 360.0;  // Standardwert
+  float batteryNomVoltage = 51.2;   // Standardwert für 16S LiFePO4
+  float targetSOC = 80.0;           // Standard-Ziel-SOC
+  float minSOC = 20.0;              // Standard-Mindest-SOC
+  
+  if (configManager.loadJsonConfig("/config.json", config)) {
+    if (config.containsKey("battery")) {
+      batteryCapacityAh = config["battery"]["capacity_ah"].as<float>();
+      batteryNomVoltage = config["battery"]["nominal_voltage"].as<float>();
+      targetSOC = config["battery"]["target_soc"].as<float>();
+      minSOC = config["battery"]["min_soc"].as<float>();
+    }
+  }
+  
+  // State of Charge aktualisieren
+  if (currentData.batterySOC != lastDrawnData.batterySOC) {
+    // Lösche den alten Wert
+    tft.fillRect(200, 80, 120, 10, BACKGROUND);
+    
+    // Neuen Wert schreiben
+    tft.setCursor(200, 80);
+    tft.setTextColor(TFT_YELLOW, BACKGROUND);
+    tft.print(currentData.batterySOC);
+    tft.print(" %");
+    
+    // Batterie-Balken aktualisieren
+    int barWidth = 200;
+    int barHeight = 30;
+    int barX = 60;
+    int barY = 100;
+    
+    // Rahmen
+    tft.drawRect(barX, barY, barWidth, barHeight, TFT_WHITE);
+    
+    // Alte Füllung löschen
+    tft.fillRect(barX + 1, barY + 1, barWidth - 2, barHeight - 2, BACKGROUND);
+    
+    // Füllstand
+    int fillWidth = map(currentData.batterySOC, 0, 100, 0, barWidth - 2);
+    
+    // Farbverlauf je nach Ladezustand
+    uint16_t barColor;
+    if (currentData.batterySOC < minSOC) {
+      barColor = TFT_RED;
+    } else if (currentData.batterySOC < 50) {
+      barColor = TFT_ORANGE;
+    } else {
+      barColor = TFT_GREEN;
+    }
+    
+    tft.fillRect(barX + 1, barY + 1, fillWidth, barHeight - 2, barColor);
+    
+    // Wenn sich der SOC geändert hat, müssen wir auch die gespeicherte Energie aktualisieren
+    tft.fillRect(200, 210, 120, 10, BACKGROUND);
+    tft.setCursor(200, 210);
+    tft.setTextColor(TFT_YELLOW, BACKGROUND);
+    float currentEnergy = (currentData.batterySOC / 100.0) * batteryCapacityAh * batteryNomVoltage;
+    float storedkWh = currentEnergy / 1000.0;
+    tft.print(storedkWh, 2);
+    tft.print(" kWh");
+  }
+  
+  // Batterieleistung aktualisieren
+  if (currentData.batteryPower != lastDrawnData.batteryPower || 
+      currentData.batterySOC != lastDrawnData.batterySOC) {
+    // Lösche den alten Wert
+    tft.fillRect(200, 150, 120, 10, BACKGROUND);
+    
+    // Neuen Wert schreiben
+    tft.setCursor(200, 150);
+    if (currentData.batteryPower > 0) {
+      tft.setTextColor(TFT_GREEN, BACKGROUND);
+      tft.print(currentData.batteryPower);
+      tft.print(" W (Laden)");
+    } else {
+      tft.setTextColor(TFT_RED, BACKGROUND);
+      tft.print(abs(currentData.batteryPower));
+      tft.print(" W (Entladen)");
+    }
+    
+    // Zeit bis zum Ziel-SOC aktualisieren, da sich die Leistung geändert hat
+    tft.fillRect(20, 190, 280, 10, BACKGROUND);
+    tft.setCursor(20, 190);
+    tft.setTextColor(TEXT_COLOR, BACKGROUND);
+    
+    // Berechnung der Zeit bis zum Ziel-SOC
+    float socDifference = 0;
+    String timeString = "";
+    bool isTimeCalculable = false;
+    
+    // Batterie-Energieinhalt in Wh berechnen
+    float batteryCapacityWh = batteryCapacityAh * batteryNomVoltage;
+    
+    // Aktueller Energieinhalt in Wh
+    float currentEnergy = (currentData.batterySOC / 100.0) * batteryCapacityWh;
+    
+    if (currentData.batteryPower > 10) {  // Ladend mit signifikanter Leistung
+      // Ziel: Aufladen bis zum Ziel-SOC
+      // Verbleibende Energie bis zum Ziel
+      float targetEnergy = (targetSOC / 100.0) * batteryCapacityWh;
+      float energyToTarget = targetEnergy - currentEnergy;
+      
+      if (energyToTarget > 0) {
+        // Stunden bis zum Ziel-SOC bei aktueller Ladeleistung
+        float hoursToTarget = energyToTarget / currentData.batteryPower;
+        
+        if (hoursToTarget > 0 && hoursToTarget < 100) {
+          int hours = (int)hoursToTarget;
+          int minutes = (int)((hoursToTarget - hours) * 60);
+          
+          timeString = String(hours) + "h " + String(minutes) + "min";
+          socDifference = targetSOC - currentData.batterySOC;
+          isTimeCalculable = true;
+        }
+      }
+    } 
+    else if (currentData.batteryPower < -10) {  // Entladend mit signifikanter Leistung
+      // Ziel: Verbleibende Zeit bis Mindest-SOC
+      float minEnergy = (minSOC / 100.0) * batteryCapacityWh;
+      float energyToMin = currentEnergy - minEnergy;
+      
+      if (energyToMin > 0) {
+        // Stunden bis zum Minimum-SOC bei aktueller Entladeleistung
+        float hoursToMin = energyToMin / abs(currentData.batteryPower);
+        
+        if (hoursToMin > 0 && hoursToMin < 100) {
+          int hours = (int)hoursToMin;
+          int minutes = (int)((hoursToMin - hours) * 60);
+          
+          timeString = String(hours) + "h " + String(minutes) + "min";
+          socDifference = currentData.batterySOC - minSOC;
+          isTimeCalculable = true;
+        }
+      }
+    }
+    
+    // Zeit bis zum Ziel-SOC anzeigen
+    if (isTimeCalculable) {
+      if (currentData.batteryPower > 0) {
+        tft.print("Zeit bis " + String(targetSOC, 0) + "% SOC:");
+        tft.setCursor(200, 190);
+        tft.setTextColor(TFT_GREEN, BACKGROUND);
+      } else {
+        tft.print("Zeit bis " + String(minSOC, 0) + "% SOC:");
+        tft.setCursor(200, 190);
+        tft.setTextColor(TFT_RED, BACKGROUND);
+      }
+      tft.print(timeString);
+    } else {
+      if (currentData.batterySOC >= targetSOC && currentData.batteryPower > 0) {
+        tft.print("Ziel-SOC erreicht");
+      } else if (currentData.batterySOC <= minSOC && currentData.batteryPower < 0) {
+        tft.print("Min-SOC erreicht");
+      } else if (abs(currentData.batteryPower) < 10) {
+        tft.print("Batterie inaktiv");
+      } else {
+        tft.print("Keine Zeitberechnung möglich");
+      }
+    }
+  }
+  
+  // Batteriespannung aktualisieren
+  if (currentData.batteryVoltage != lastDrawnData.batteryVoltage) {
+    // Lösche den alten Wert
+    tft.fillRect(200, 170, 120, 10, BACKGROUND);
+    
+    // Neuen Wert schreiben
+    tft.setCursor(200, 170);
+    tft.setTextColor(TFT_CYAN, BACKGROUND);
+    tft.print(currentData.batteryVoltage);
+    tft.print(" V");
+  }
+}
+
+// Beispielupdater für GridStatus
+void ViewManager::updateGridStatus() {
+  SolarData& currentData = dataManager.getData();
+  tft.setTextSize(1);
+  
+  // Wenn sich der Grid-Power-Wert geändert hat
+  if (currentData.gridPower != lastDrawnData.gridPower) {
+    // Lösche den alten Wert
+    tft.fillRect(200, 80, 120, 10, BACKGROUND);
+    
+    // Neuen Wert schreiben
+    tft.setCursor(200, 80);
+    if (currentData.gridPower < 0) {
+      tft.setTextColor(TFT_GREEN, BACKGROUND);
+      tft.print(abs(currentData.gridPower));
+      tft.print(" W (Einspeisung)");
+    } else {
+      tft.setTextColor(TFT_RED, BACKGROUND);
+      tft.print(currentData.gridPower);
+      tft.print(" W (Bezug)");
+    }
+    
+    // Visualisierung des Energieflusses aktualisieren
+    int centerX = 160;
+    int centerY = 130;
+    int radius = 50;
+    
+    // Lösche den Bereich um die Visualisierung
+    tft.fillRect(centerX - radius - 60, centerY - radius, 
+                 radius * 2 + 90, radius * 2, BACKGROUND);
+    
+    // Kreisrahmen als "Haus"
+    tft.drawCircle(centerX, centerY, radius, TFT_WHITE);
+    
+    // Energieflussrichtung mit Pfeilen darstellen
+    if (currentData.gridPower < 0) {
+      // Einspeisung: Pfeile vom Haus zum Netz
+      tft.fillTriangle(
+        centerX + radius + 20, centerY,
+        centerX + radius, centerY - 10,
+        centerX + radius, centerY + 10,
+        TFT_GREEN
+      );
+      
+      tft.setTextColor(TFT_GREEN, BACKGROUND);
+      tft.setCursor(centerX + radius + 30, centerY - 5);
+      tft.print("Netz");
+    } else {
+      // Bezug: Pfeile vom Netz zum Haus
+      tft.fillTriangle(
+        centerX - radius - 20, centerY,
+        centerX - radius, centerY - 10,
+        centerX - radius, centerY + 10,
+        TFT_RED
+      );
+      
+      tft.setTextColor(TFT_RED, BACKGROUND);
+      tft.setCursor(centerX - radius - 60, centerY - 5);
+      tft.print("Netz");
+    }
+    
+    // Haus-Symbol in der Mitte
+    tft.setTextColor(TFT_WHITE, BACKGROUND);
+    tft.setCursor(centerX - 15, centerY - 5);
+    tft.print("Haus");
+  }
+}
+
+// Stub-Methoden für die anderen Ansichten (müssen entsprechend implementiert werden)
+void ViewManager::updatePvPower() {
+  // Implementierung entsprechend der Ansicht
+}
+
+void ViewManager::updateConsumption() {
+  // Implementierung entsprechend der Ansicht
+}
+
+void ViewManager::updateAutarky() {
+  // Implementierung entsprechend der Ansicht
+}
+
+void ViewManager::updateDailyValues() {
+  // Implementierung entsprechend der Ansicht
+}
+
+void ViewManager::updateStatistics() {
+  // Implementierung entsprechend der Ansicht
+}
+
+void ViewManager::updateHeating() {
+  // Implementierung entsprechend der Ansicht
+}
+
+void ViewManager::updatePool() {
+  // Implementierung entsprechend der Ansicht
+}
+
+void ViewManager::updateWifi() {
+  // WLAN-Status aktualisieren
+  tft.setCursor(20, 110);
+  tft.fillRect(90, 110, 230, 10, BACKGROUND);
+  tft.print("Status: ");
+  tft.println(WiFi.status() == WL_CONNECTED ? "Verbunden" : "Getrennt");
+}
+
+void ViewManager::updateMqtt() {
+  // MQTT-Status aktualisieren
+  tft.setCursor(20, 110);
+  tft.fillRect(90, 110, 230, 10, BACKGROUND);
+  tft.print("Status: ");
+  tft.println(mqttManager.isConnected() ? "Verbunden" : "Getrennt");
+}
+
+void ViewManager::updateDisplay() {
+  // Display-Einstellungen aktualisieren
+  // In der aktuellen Implementierung gibt es nichts dynamisches zu aktualisieren
+}
+
+void ViewManager::updateSystemInfo() {
+  // Aktualisiere Laufzeit
+  tft.fillRect(90, 170, 230, 10, BACKGROUND);
+  tft.setCursor(20, 170);
+  tft.print("Laufzeit: ");
+  tft.print(millis() / 1000 / 60);
+  tft.println(" Minuten");
+  
+  // Aktualisiere Speicherinformation
+  tft.fillRect(90, 150, 230, 10, BACKGROUND);
+  tft.setCursor(20, 150);
+  tft.print("Speicher: ");
+  tft.print(ESP.getFreeHeap() / 1024);
+  tft.println(" KB frei");
+}
 void ViewManager::drawBackButton() {
   tft.fillRoundRect(10, 10, 50, 30, 5, TFT_DARKGREY);
   tft.drawRoundRect(10, 10, 50, 30, 5, TFT_WHITE);
@@ -210,12 +673,29 @@ void ViewManager::drawSolarStatus() {
 }
 
 // Batterie Status anzeigen
+// Batterie Status anzeigen mit Zeitberechnung bis zum Ziel-SOC
 void ViewManager::drawBatteryStatus() {
   tft.setTextSize(1);
   tft.setTextColor(TEXT_COLOR, BACKGROUND);
   
   // Holen der aktuellen Daten vom DataManager
   SolarData& solarData = dataManager.getData();
+  
+  // Batterieparameter aus der Konfiguration laden
+  JsonDocument config;
+  float batteryCapacityAh = 360.0;  // Standardwert
+  float batteryNomVoltage = 51.2;   // Standardwert für 16S LiFePO4
+  float targetSOC = 80.0;           // Standard-Ziel-SOC
+  float minSOC = 20.0;              // Standard-Mindest-SOC
+  
+  if (configManager.loadJsonConfig("/config.json", config)) {
+    if (config.containsKey("battery")) {
+      batteryCapacityAh = config["battery"]["capacity_ah"].as<float>();
+      batteryNomVoltage = config["battery"]["nominal_voltage"].as<float>();
+      targetSOC = config["battery"]["target_soc"].as<float>();
+      minSOC = config["battery"]["min_soc"].as<float>();
+    }
+  }
   
   tft.setCursor(20, 60);
   tft.println("Batterie Status:");
@@ -242,7 +722,7 @@ void ViewManager::drawBatteryStatus() {
   
   // Farbverlauf je nach Ladezustand
   uint16_t barColor;
-  if (solarData.batterySOC < 20) {
+  if (solarData.batterySOC < minSOC) {
     barColor = TFT_RED;
   } else if (solarData.batterySOC < 50) {
     barColor = TFT_ORANGE;
@@ -275,7 +755,96 @@ void ViewManager::drawBatteryStatus() {
   tft.setTextColor(TFT_CYAN, BACKGROUND);
   tft.print(solarData.batteryVoltage);
   tft.print(" V");
+  
+  // Berechnung der Zeit bis zum Ziel-SOC
+  float socDifference = 0;
+  String timeString = "";
+  bool isTimeCalculable = false;
+  
+  // Batterie-Energieinhalt in Wh berechnen
+  float batteryCapacityWh = batteryCapacityAh * batteryNomVoltage;
+  
+  // Aktueller Energieinhalt in Wh
+  float currentEnergy = (solarData.batterySOC / 100.0) * batteryCapacityWh;
+  
+  if (solarData.batteryPower > 10) {  // Ladend mit signifikanter Leistung
+    // Ziel: Aufladen bis zum Ziel-SOC
+    // Verbleibende Energie bis zum Ziel
+    float targetEnergy = (targetSOC / 100.0) * batteryCapacityWh;
+    float energyToTarget = targetEnergy - currentEnergy;
+    
+    if (energyToTarget > 0) {
+      // Stunden bis zum Ziel-SOC bei aktueller Ladeleistung
+      float hoursToTarget = energyToTarget / solarData.batteryPower;
+      
+      if (hoursToTarget > 0 && hoursToTarget < 100) {
+        int hours = (int)hoursToTarget;
+        int minutes = (int)((hoursToTarget - hours) * 60);
+        
+        timeString = String(hours) + "h " + String(minutes) + "min";
+        socDifference = targetSOC - solarData.batterySOC;
+        isTimeCalculable = true;
+      }
+    }
+  } 
+  else if (solarData.batteryPower < -10) {  // Entladend mit signifikanter Leistung
+    // Ziel: Verbleibende Zeit bis Mindest-SOC
+    float minEnergy = (minSOC / 100.0) * batteryCapacityWh;
+    float energyToMin = currentEnergy - minEnergy;
+    
+    if (energyToMin > 0) {
+      // Stunden bis zum Minimum-SOC bei aktueller Entladeleistung
+      float hoursToMin = energyToMin / abs(solarData.batteryPower);
+      
+      if (hoursToMin > 0 && hoursToMin < 100) {
+        int hours = (int)hoursToMin;
+        int minutes = (int)((hoursToMin - hours) * 60);
+        
+        timeString = String(hours) + "h " + String(minutes) + "min";
+        socDifference = solarData.batterySOC - minSOC;
+        isTimeCalculable = true;
+      }
+    }
+  }
+  
+  // Zeit bis zum Ziel-SOC anzeigen
+  tft.setCursor(20, 190);
+  tft.setTextColor(TEXT_COLOR, BACKGROUND);
+  
+  if (isTimeCalculable) {
+    if (solarData.batteryPower > 0) {
+      tft.print("Zeit bis " + String(targetSOC, 0) + "% SOC:");
+      tft.setCursor(200, 190);
+      tft.setTextColor(TFT_GREEN, BACKGROUND);
+    } else {
+      tft.print("Zeit bis " + String(minSOC, 0) + "% SOC:");
+      tft.setCursor(200, 190);
+      tft.setTextColor(TFT_RED, BACKGROUND);
+    }
+    tft.print(timeString);
+  } else {
+    if (solarData.batterySOC >= targetSOC && solarData.batteryPower > 0) {
+      tft.print("Ziel-SOC erreicht");
+    } else if (solarData.batterySOC <= minSOC && solarData.batteryPower < 0) {
+      tft.print("Min-SOC erreicht");
+    } else if (abs(solarData.batteryPower) < 10) {
+      tft.print("Batterie inaktiv");
+    } else {
+      tft.print("Keine Zeitberechnung möglich");
+    }
+  }
+  
+  // Gespeicherte Energie
+  tft.setCursor(20, 210);
+  tft.setTextColor(TEXT_COLOR, BACKGROUND);
+  tft.print("Gespeicherte Energie:");
+  tft.setCursor(200, 210);
+  tft.setTextColor(TFT_YELLOW, BACKGROUND);
+  float storedkWh = currentEnergy / 1000.0;
+  tft.print(storedkWh, 2);
+  tft.print(" kWh");
 }
+
 
 // Weitere Detailansichten hier implementieren...
 // Beispiel für eine weitere Ansicht
@@ -500,7 +1069,7 @@ void ViewManager::showSystemInfo() {
   tft.println("Gerät: ESP32 Solar Monitor");
   
   tft.setCursor(20, 110);
-  tft.println("Firmware: v0.4.0");
+  tft.println("Firmware: v0.4.1");
   
   tft.setCursor(20, 130);
   tft.print("CPU: ESP32 ");
