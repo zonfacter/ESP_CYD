@@ -7,6 +7,8 @@
 #include <WiFi.h>
 
 // Externe Globale Variablen
+class IoBrokerManager;
+extern IoBrokerManager ioBrokerManager;
 extern TFT_eSPI tft;
 extern MqttManager mqttManager;
 extern DataManager dataManager;
@@ -39,6 +41,11 @@ ViewManager::ViewManager(TFT_eSPI &tft, DataManager &dataManager)
   viewFunctions["setupDisplay"] = &ViewManager::setupDisplay;
   viewFunctions["showSystemInfo"] = &ViewManager::showSystemInfo;
 
+  viewFunctions["controlLight"] = &ViewManager::controlLight;
+  viewFunctions["controlRolladen"] = &ViewManager::controlRolladen;
+
+// Registriere Lichtsteuerung in updateFunctions Map
+  updateFunctions["controlLight"] = &ViewManager::updateLight;
   // Registriere alle Update-Funktionen in der Map
   updateFunctions["drawSolarStatus"] = &ViewManager::updateSolarStatus;
   updateFunctions["drawBatteryStatus"] = &ViewManager::updateBatteryStatus;
@@ -56,6 +63,7 @@ ViewManager::ViewManager(TFT_eSPI &tft, DataManager &dataManager)
   updateFunctions["setupMqtt"] = &ViewManager::updateMqtt;
   updateFunctions["setupDisplay"] = &ViewManager::updateDisplay;
   updateFunctions["showSystemInfo"] = &ViewManager::updateSystemInfo;
+  updateFunctions["controlRolladen"] = &ViewManager::updateRolladen;
 }
 
 bool ViewManager::showView(const String &functionName) {
@@ -236,11 +244,11 @@ void ViewManager::updateBatteryStatus() {
   JsonDocument config;
   float batteryCapacityAh = 360.0;  // Standardwert
   float batteryNomVoltage = 51.2;   // Standardwert für 16S LiFePO4
-  float targetSOC = 80.0;           // Standard-Ziel-SOC
-  float minSOC = 20.0;              // Standard-Mindest-SOC
+  float targetSOC = 100.0;           // Standard-Ziel-SOC
+  float minSOC = 15.0;              // Standard-Mindest-SOC
   
   if (configManager.loadJsonConfig("/config.json", config)) {
-    if (config.containsKey("battery")) {
+    if (config["battery"].is<JsonObject>()) {
       batteryCapacityAh = config["battery"]["capacity_ah"].as<float>();
       batteryNomVoltage = config["battery"]["nominal_voltage"].as<float>();
       targetSOC = config["battery"]["target_soc"].as<float>();
@@ -493,10 +501,6 @@ void ViewManager::updateDailyValues() {
   // Implementierung entsprechend der Ansicht
 }
 
-void ViewManager::updateStatistics() {
-  // Implementierung entsprechend der Ansicht
-}
-
 void ViewManager::updateHeating() {
   // Implementierung entsprechend der Ansicht
 }
@@ -685,11 +689,11 @@ void ViewManager::drawBatteryStatus() {
   JsonDocument config;
   float batteryCapacityAh = 360.0;  // Standardwert
   float batteryNomVoltage = 51.2;   // Standardwert für 16S LiFePO4
-  float targetSOC = 80.0;           // Standard-Ziel-SOC
-  float minSOC = 20.0;              // Standard-Mindest-SOC
+  float targetSOC = 100.0;           // Standard-Ziel-SOC
+  float minSOC = 15.0;              // Standard-Mindest-SOC
   
   if (configManager.loadJsonConfig("/config.json", config)) {
-    if (config.containsKey("battery")) {
+    if (config["battery"].is<JsonObject>()) {
       batteryCapacityAh = config["battery"]["capacity_ah"].as<float>();
       batteryNomVoltage = config["battery"]["nominal_voltage"].as<float>();
       targetSOC = config["battery"]["target_soc"].as<float>();
@@ -845,7 +849,181 @@ void ViewManager::drawBatteryStatus() {
   tft.print(" kWh");
 }
 
+// Rolladensteuerung
+void ViewManager::controlRolladen() {
+  tft.setTextSize(1);
+  tft.setTextColor(TEXT_COLOR, BACKGROUND);
 
+  tft.setCursor(120, 30);
+  tft.println("Rolladensteuerung");
+
+  // Rolladen-Auswahl Buttons R1–R6
+  int buttonW = 45;
+  int buttonH = 35;
+  int startX = (SCREEN_WIDTH - 6 * buttonW - 5 * 5) / 2;
+
+  for (int i = 1; i <= 6; i++) {
+    int x = startX + (i - 1) * (buttonW + 5);
+    uint16_t color = (i == selectedRolladen) ? TFT_CYAN : TFT_BLUE;
+
+    // Status prüfen
+    int position = 0;
+    int targetPosition = 0;
+    String direction = "";
+    bool moving = false;
+    bool statusAvailable = ioBrokerManager.getRolladenStatus(String(i), position, targetPosition, direction, moving);
+
+    // Bewegungsanzeige
+    if (statusAvailable && moving) {
+      color = TFT_ORANGE;
+    }
+
+    // Button zeichnen
+    tft.fillRoundRect(x, 80, buttonW, buttonH, 5, color);
+    tft.drawRoundRect(x, 80, buttonW, buttonH, 5, BORDER_COLOR);
+
+    // "R1", "R2", etc. im oberen Teil des Buttons
+    tft.setTextColor(TEXT_COLOR, color);
+    tft.setCursor(x + buttonW/2 - 5, 80 + 8); // Zentriert
+    tft.print("R");
+    tft.print(i);
+
+    // Prozentanzeige im unteren Teil des Buttons
+    tft.setCursor(x + buttonW/2 - 12, 80 + buttonH - 12);
+    if (statusAvailable) {
+      tft.print(String(position) + "%");
+    } else {
+      tft.print("--%");
+    }
+  }
+
+  // Steuerungstasten AUF / STOP / AB
+  drawButton(50, 120, 60, 30, "AUF", TFT_GREEN);
+  drawButton(130, 120, 60, 30, "STOP", TFT_YELLOW);
+  drawButton(210, 120, 60, 30, "AB", TFT_RED);
+
+  // Positionsvorgaben 0% bis 100%
+  int posButtonW = 40;
+  int posY = 50;
+  int posX = (SCREEN_WIDTH - 5 * posButtonW - 4 * 5) / 2;
+
+  drawButton(posX + 0 * (posButtonW + 5), posY, posButtonW, 25, "0%", TFT_SKYBLUE);
+  drawButton(posX + 1 * (posButtonW + 5), posY, posButtonW, 25, "25%", TFT_SKYBLUE);
+  drawButton(posX + 2 * (posButtonW + 5), posY, posButtonW, 25, "50%", TFT_SKYBLUE);
+  drawButton(posX + 3 * (posButtonW + 5), posY, posButtonW, 25, "75%", TFT_SKYBLUE);
+  drawButton(posX + 4 * (posButtonW + 5), posY, posButtonW, 25, "100%", TFT_SKYBLUE);
+
+  // Statuszeile unten
+  int position = 0, target = 0;
+  String dir = "";
+  bool moving = false;
+  bool ok = ioBrokerManager.getRolladenStatus(String(selectedRolladen), position, target, dir, moving);
+
+  tft.setCursor(20, 180); // Position nach unten verschoben, damit Status nicht überlagert
+  tft.setTextColor(TEXT_COLOR, BACKGROUND);
+  tft.print("R");
+  tft.print(selectedRolladen);
+  tft.print(" Status: ");
+
+  if (!ok) {
+    tft.println("unbekannt");
+  } else if (moving) {
+    if (dir == "up") {
+      tft.print("fährt hoch");
+    } else if (dir == "down") {
+      tft.print("fährt runter");
+    } else {
+      tft.print("in Bewegung");
+    }
+    tft.print(" (");
+    tft.print(position);
+    tft.print("% -> ");
+    tft.print(target);
+    tft.println("%)");
+  } else {
+    tft.print("gestoppt (");
+    tft.print(position);
+    tft.println("%)");
+  }
+}
+
+// Aktualisierung der Rolladenansicht
+void ViewManager::updateRolladen() {
+  // Nur den Status aktualisieren, ohne alles neu zu zeichnen
+  tft.fillRect(20, 180, 280, 40, BACKGROUND); // Bereich für den Status löschen
+  
+  // Status des ausgewählten Rolladens anzeigen
+  int currentPos = 0;
+  int targetPos = 0;
+  String direction = "";
+  bool moving = false;
+  bool statusAvailable = ioBrokerManager.getRolladenStatus(String(selectedRolladen), currentPos, targetPos, direction, moving);
+  
+  tft.setCursor(20, 180);
+  tft.setTextColor(TEXT_COLOR, BACKGROUND);
+  
+  if (statusAvailable) {
+    tft.print("Position: ");
+    tft.print(currentPos);
+    tft.print("%, Status: ");
+    if (moving) {
+      if (direction == "up") {
+        tft.println("Fährt hoch");
+      } else if (direction == "down") {
+        tft.println("Fährt runter");
+      } else {
+        tft.println("In Bewegung");
+      }
+    } else {
+      tft.println("Gestoppt");
+    }
+  } else {
+    tft.println("Status nicht verfügbar");
+  }
+  
+  // Aktualisiere die Anzeige in den Rolladen-Buttons
+  int buttonW = 45;
+  int buttonH = 35;
+  int startX = (SCREEN_WIDTH - 6 * buttonW - 5 * 5) / 2;
+  
+  for (int i = 1; i <= 6; i++) {
+    int x = startX + (i-1) * (buttonW + 5);
+    uint16_t color = (i == selectedRolladen) ? TFT_CYAN : TFT_BLUE;
+    
+    // Status abfragen
+    int currentPos = 0;
+    int targetPos = 0;
+    String dir = "";
+    bool moving = false;
+    bool statusAvailable = ioBrokerManager.getRolladenStatus(String(i), currentPos, targetPos, dir, moving);
+    
+    // Bewegungsanzeige
+    if (statusAvailable && moving) {
+      color = TFT_ORANGE;
+      
+      // Button-Hintergrund nur aktualisieren, wenn sich der Status geändert hat
+      tft.fillRoundRect(x, 80, buttonW, buttonH, 5, color);
+      tft.drawRoundRect(x, 80, buttonW, buttonH, 5, BORDER_COLOR);
+      
+      // "R1", "R2", etc. im oberen Teil des Buttons
+      tft.setTextColor(TEXT_COLOR, color);
+      tft.setCursor(x + buttonW/2 - 5, 80 + 8);
+      tft.print("R");
+      tft.print(i);
+    }
+    
+    // Prozentanzeige in den Buttons aktualisieren (nur wenn Daten verfügbar)
+    if (statusAvailable) {
+      // Lösche den Bereich für die Prozentanzeige
+      tft.fillRect(x + 2, 80 + buttonH - 14, buttonW - 4, 12, color);
+      
+      // Prozentanzeige erneuern
+      tft.setTextColor(TEXT_COLOR, color);
+      tft.setCursor(x + buttonW/2 - 12, 80 + buttonH - 12);
+      tft.print(String(currentPos) + "%");
+    }
+  }
+}
 // Weitere Detailansichten hier implementieren...
 // Beispiel für eine weitere Ansicht
 void ViewManager::drawGridStatus() {
@@ -945,11 +1123,189 @@ void ViewManager::drawDailyValues() {
   tft.println("Tageswerte Ansicht wird geladen...");
 }
 
+// Diese Funktion für ViewManager.cpp ergänzen
+
+// Statistik-Ansicht mit historischen Daten
 void ViewManager::drawStatistics() {
   tft.setTextSize(1);
   tft.setTextColor(TEXT_COLOR, BACKGROUND);
-  tft.setCursor(20, 70);
-  tft.println("Statistik Ansicht wird geladen...");
+  
+  tft.setCursor(20, 60);
+  tft.println("Statistik-Übersicht");
+  
+  // Prüfe, ob historische Daten verfügbar sind
+  int historyCount = dataManager.getHistoryCount();
+  
+  if (historyCount <= 0) {
+    tft.setCursor(20, 80);
+    tft.println("Keine historischen Daten verfügbar.");
+    tft.setCursor(20, 100);
+    tft.println("Daten werden im Laufe der Zeit gesammelt.");
+    return;
+  }
+  
+  // Abrufen der historischen Daten
+  HistoricalData* history = dataManager.getHistoricalData();
+  
+  // Finde höchste und niedrigste Werte für Skalierung
+  float maxPvPower = 0;
+  float maxGridPower = 0;
+  float maxLoadPower = 0;
+  float maxBatteryPower = 0;
+  
+  for (int i = 0; i < historyCount; i++) {
+    if (history[i].timestamp > 0) {
+      maxPvPower = max(maxPvPower, history[i].data.pvPower);
+      maxGridPower = max(maxGridPower, abs(history[i].data.gridPower));
+      maxLoadPower = max(maxLoadPower, history[i].data.loadPower);
+      maxBatteryPower = max(maxBatteryPower, abs(history[i].data.batteryPower));
+    }
+  }
+  
+  // Finde maximalen Wert für die Y-Achse
+  float maxYValue = max(max(maxPvPower, maxGridPower), max(maxLoadPower, maxBatteryPower));
+  maxYValue = ceil(maxYValue / 500) * 500; // Runde auf nächste 500W auf
+  
+  // Graph-Dimensionen
+  int graphX = 50;
+  int graphY = 100;
+  int graphWidth = 240;
+  int graphHeight = 100;
+  
+  // Y-Achse: Leistung in Watt
+  tft.drawLine(graphX, graphY, graphX, graphY + graphHeight, TFT_WHITE);
+  
+  // X-Achse: Zeitpunkte
+  tft.drawLine(graphX, graphY + graphHeight, graphX + graphWidth, graphY + graphHeight, TFT_WHITE);
+  
+  // Y-Achsen-Beschriftungen
+  tft.setTextSize(1);
+  tft.setTextColor(TFT_WHITE, BACKGROUND);
+  
+  // Y-Achse Beschriftung (Leistung)
+  for (int i = 0; i <= 4; i++) {
+    int y = graphY + graphHeight - (i * graphHeight / 4);
+    int value = (i * maxYValue / 4);
+    
+    // Horizontale Hilfslinien
+    tft.drawLine(graphX, y, graphX + graphWidth, y, TFT_DARKGREY);
+    
+    // Beschriftung
+    tft.setCursor(graphX - 45, y - 3);
+    tft.print(value);
+    tft.print(" W");
+  }
+  
+  // Zeichne Datenpunkte
+  if (historyCount > 0) {
+    // PV-Leistung (grün)
+    for (int i = 0; i < historyCount - 1; i++) {
+      if (history[i].timestamp > 0 && history[i+1].timestamp > 0) {
+        int x1 = graphX + (i * graphWidth / (historyCount - 1));
+        int y1 = graphY + graphHeight - (history[i].data.pvPower * graphHeight / maxYValue);
+        int x2 = graphX + ((i+1) * graphWidth / (historyCount - 1));
+        int y2 = graphY + graphHeight - (history[i+1].data.pvPower * graphHeight / maxYValue);
+        
+        tft.drawLine(x1, y1, x2, y2, TFT_GREEN);
+      }
+    }
+    
+    // Verbrauch (rot)
+    for (int i = 0; i < historyCount - 1; i++) {
+      if (history[i].timestamp > 0 && history[i+1].timestamp > 0) {
+        int x1 = graphX + (i * graphWidth / (historyCount - 1));
+        int y1 = graphY + graphHeight - (history[i].data.loadPower * graphHeight / maxYValue);
+        int x2 = graphX + ((i+1) * graphWidth / (historyCount - 1));
+        int y2 = graphY + graphHeight - (history[i+1].data.loadPower * graphHeight / maxYValue);
+        
+        tft.drawLine(x1, y1, x2, y2, TFT_RED);
+      }
+    }
+    
+    // Batterieleistung (gelb)
+    for (int i = 0; i < historyCount - 1; i++) {
+      if (history[i].timestamp > 0 && history[i+1].timestamp > 0) {
+        int x1 = graphX + (i * graphWidth / (historyCount - 1));
+        int y1 = graphY + graphHeight - (history[i].data.batteryPower * graphHeight / maxYValue);
+        int x2 = graphX + ((i+1) * graphWidth / (historyCount - 1));
+        int y2 = graphY + graphHeight - (history[i+1].data.batteryPower * graphHeight / maxYValue);
+        
+        tft.drawLine(x1, y1, x2, y2, TFT_YELLOW);
+      }
+    }
+  }
+  
+  // Legende
+  int legendX = graphX;
+  int legendY = graphY + graphHeight + 15;
+  
+  // PV
+  tft.fillRect(legendX, legendY, 10, 10, TFT_GREEN);
+  tft.setCursor(legendX + 15, legendY + 2);
+  tft.setTextColor(TFT_WHITE, BACKGROUND);
+  tft.print("PV");
+  
+  // Verbrauch
+  legendX += 60;
+  tft.fillRect(legendX, legendY, 10, 10, TFT_RED);
+  tft.setCursor(legendX + 15, legendY + 2);
+  tft.print("Verbrauch");
+  
+  // Batterie
+  legendX += 90;
+  tft.fillRect(legendX, legendY, 10, 10, TFT_YELLOW);
+  tft.setCursor(legendX + 15, legendY + 2);
+  tft.print("Batterie");
+  
+  // Statistik-Zusammenfassung
+  tft.setCursor(20, legendY + 25);
+  tft.setTextColor(TFT_SKYBLUE, BACKGROUND);
+  tft.println("Datenpunkte: " + String(historyCount));
+  
+  // Durchschnittswerte berechnen
+  float avgPvPower = 0;
+  float avgLoadPower = 0;
+  float avgBatteryPower = 0;
+  float avgAutarky = 0;
+  
+  for (int i = 0; i < historyCount; i++) {
+    if (history[i].timestamp > 0) {
+      avgPvPower += history[i].data.pvPower;
+      avgLoadPower += history[i].data.loadPower;
+      avgBatteryPower += history[i].data.batteryPower;
+      avgAutarky += history[i].data.autarky;
+    }
+  }
+  
+  if (historyCount > 0) {
+    avgPvPower /= historyCount;
+    avgLoadPower /= historyCount;
+    avgBatteryPower /= historyCount;
+    avgAutarky /= historyCount;
+    
+    tft.setCursor(20, tft.getCursorY() + 5);
+    tft.print("Durchschnittliche PV-Leistung: ");
+    tft.print(avgPvPower, 0);
+    tft.println(" W");
+    
+    tft.setCursor(20, tft.getCursorY() + 5);
+    tft.print("Durchschnittlicher Verbrauch: ");
+    tft.print(avgLoadPower, 0);
+    tft.println(" W");
+    
+    tft.setCursor(20, tft.getCursorY() + 5);
+    tft.print("Durchschnittliche Autarkie: ");
+    tft.print(avgAutarky, 1);
+    tft.println(" %");
+  }
+
+  // Diese Methode zur ViewManager.cpp hinzufügen
+}
+
+void ViewManager::updateStatistics() {
+  // Bei Statistiken führen wir ein komplettes Neuzeichnen durch,
+  // da sich die historischen Daten ändern können und die Grafik neu skaliert werden muss
+  drawStatistics();
 }
 
 // Steuerungsfunktionen
@@ -993,6 +1349,75 @@ void ViewManager::controlPool() {
   // Weitere Informationen
   tft.setCursor(20, 180);
   tft.println("Tippen Sie auf EIN oder AUS, um das Gerät zu steuern.");
+}
+
+// In ViewManager.cpp, controlLight-Methode aktualisieren
+
+void ViewManager::controlLight() {
+  tft.setTextSize(1);
+  tft.setTextColor(TEXT_COLOR, BACKGROUND);
+  
+  tft.setCursor(20, 70);
+  tft.println("Lichtsteuerung");
+  
+  // Statusabfrage
+  bool lightStatus = false;
+  bool statusAvailable = ioBrokerManager.getLightStatus("1", lightStatus);
+  
+  // Schaltflächen
+  drawButton(60, 100, 80, 40, "EIN", lightStatus ? HIGHLIGHT_COLOR : TFT_GREEN);
+  drawButton(180, 100, 80, 40, "AUS", !lightStatus ? HIGHLIGHT_COLOR : TFT_RED);
+  
+  // Status anzeigen
+  tft.setCursor(20, 160);
+  tft.println("Status: ");
+  
+  if (statusAvailable) {
+    tft.setTextColor(lightStatus ? TFT_GREEN : TFT_RED, BACKGROUND);
+    tft.println(lightStatus ? "Eingeschaltet" : "Ausgeschaltet");
+  } else {
+    tft.setTextColor(TFT_YELLOW, BACKGROUND);
+    tft.println("Unbekannt");
+  }
+  
+  // Verbindungsstatus
+  tft.setCursor(20, 190);
+  tft.setTextColor(TEXT_COLOR, BACKGROUND);
+  tft.println("ioBroker: ");
+  
+  tft.setTextColor(mqttManager.isConnected() ? TFT_GREEN : TFT_RED, BACKGROUND);
+  tft.println(mqttManager.isConnected() ? "Verbunden" : "Nicht verbunden");
+  
+  // Weitere Informationen
+  tft.setCursor(20, 220);
+  tft.setTextColor(TEXT_COLOR, BACKGROUND);
+  tft.println("Tippen Sie auf EIN oder AUS, um das Licht zu steuern.");
+}
+
+void ViewManager::updateLight() {
+  // Ähnlicher Aufbau wie controlLight, aber nur Status aktualisieren
+  // ohne vollständiges Neuzeichnen
+  
+  bool lightStatus = false;
+  bool statusAvailable = ioBrokerManager.getLightStatus("1", lightStatus);
+  
+  // Status aktualisieren
+  tft.fillRect(80, 160, 240, 10, BACKGROUND);
+  tft.setCursor(80, 160);
+  
+  if (statusAvailable) {
+    tft.setTextColor(lightStatus ? TFT_GREEN : TFT_RED, BACKGROUND);
+    tft.println(lightStatus ? "Eingeschaltet" : "Ausgeschaltet");
+  } else {
+    tft.setTextColor(TFT_YELLOW, BACKGROUND);
+    tft.println("Unbekannt");
+  }
+  
+  // Verbindungsstatus
+  tft.fillRect(80, 190, 240, 10, BACKGROUND);
+  tft.setCursor(80, 190);
+  tft.setTextColor(mqttManager.isConnected() ? TFT_GREEN : TFT_RED, BACKGROUND);
+  tft.println(mqttManager.isConnected() ? "Verbunden" : "Nicht verbunden");
 }
 
 // Einstellungsfunktionen
@@ -1069,7 +1494,7 @@ void ViewManager::showSystemInfo() {
   tft.println("Gerät: ESP32 Solar Monitor");
   
   tft.setCursor(20, 110);
-  tft.println("Firmware: v0.4.1");
+  tft.println("Firmware: " APP_VERSION);
   
   tft.setCursor(20, 130);
   tft.print("CPU: ESP32 ");
@@ -1085,4 +1510,57 @@ void ViewManager::showSystemInfo() {
   tft.print("Laufzeit: ");
   tft.print(millis() / 1000 / 60);
   tft.println(" Minuten");
+}
+
+// Erweiterte Version mit Pulsieren
+void ViewManager::drawHeartbeat(bool active, int centerX, int centerY, float scale) {
+  unsigned long currentTime = millis();
+  float pulseAmplitude = 0.075;  // Ergibt max ~20px Breite
+  // Animation nur aktualisieren, wenn aktiv und Zeit vergangen ist
+  if (active && (currentTime - lastHeartbeatTime > 30)) {
+    lastHeartbeatTime = currentTime;
+    
+    // Vorheriges Herz löschen (mit Hintergrundfarbe zeichnen)
+    drawHeart(centerX, centerY, scale + sin(heartAnimationParam) * pulseAmplitude, BACKGROUND);
+    
+    // Animationsparameter aktualisieren
+    heartAnimationParam += 0.1;
+    if (heartAnimationParam > 2 * PI) heartAnimationParam = 0;
+    
+    // Neues Herz in Rot zeichnen
+    drawHeart(centerX, centerY, scale + sin(heartAnimationParam) * pulseAmplitude, TFT_RED);
+  } 
+  else if (!active) {
+    // Wenn nicht aktiv, graues statisches Herz zeichnen (nur wenn nötig)
+    static bool lastActive = true;
+    if (lastActive != active) {
+      // Nur zeichnen, wenn sich der Status geändert hat
+      drawHeart(centerX, centerY, scale, BACKGROUND); // Altes Herz löschen
+      drawHeart(centerX, centerY, scale, TFT_DARKGREY); // Graues Herz zeichnen
+      lastActive = active;
+    }
+  }
+}
+
+// Parametrische Herzform zeichnen (unverändert aus Ihrem Beispiel)
+void ViewManager::drawHeart(int centerX, int centerY, float scale, uint16_t color) {
+  float t;
+  int prevX = 0;
+  int prevY = 0;
+  bool first = true;
+  
+  for (t = 0; t < 2 * PI; t += 0.05) {
+    float x = 16 * pow(sin(t), 3);
+    float y = 13 * cos(t) - 5 * cos(2 * t) - 2 * cos(3 * t) - cos(4 * t);
+    int screenX = centerX + int(x * scale);
+    int screenY = centerY - int(y * scale); // Y invertiert wegen Display
+    
+    if (!first) {
+      tft.drawLine(prevX, prevY, screenX, screenY, color);
+    }
+    
+    prevX = screenX;
+    prevY = screenY;
+    first = false;
+  }
 }

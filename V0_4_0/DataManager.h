@@ -6,6 +6,8 @@
 #define DATA_MANAGER_H
 
 #include <Arduino.h>
+#include <SPIFFS.h>
+#include <ArduinoJson.h>
 #include "config.h"
 
 // Vorwärtsdeklaration der MQTT-Manager-Klasse
@@ -34,11 +36,30 @@ struct SolarData {
     autarky(0) {}
 };
 
+// Struktur für historische Daten
+struct HistoricalData {
+  unsigned long timestamp;  // Zeitstempel des Datensatzes
+  SolarData data;           // Die eigentlichen Solardaten
+  
+  HistoricalData() : timestamp(0) {}
+  HistoricalData(unsigned long ts, const SolarData& sd) : timestamp(ts), data(sd) {}
+};
+
 class DataManager {
 private:
   SolarData data;
   bool simulationMode = true;
   unsigned long lastUpdate = 0;
+  unsigned long lastCacheUpdate = 0;
+  
+  // Historische Daten speichern
+  static const int MAX_HISTORY_ENTRIES = 24; // 1 Eintrag pro Stunde für einen Tag
+  HistoricalData history[MAX_HISTORY_ENTRIES];
+  int historyIndex = 0;
+  
+  // Cache-Funktionen
+  bool saveDataToCache();
+  bool loadDataFromCache();
   
 public:
   DataManager();
@@ -47,8 +68,16 @@ public:
   void updateFromMqtt(MqttManager& mqttManager);
   void simulateData();  // Für Testzwecke
   
+  // Daten aus dem Cache laden, falls MQTT nicht verfügbar
+  bool checkAndLoadCachedData();
+  
   // Getter
   SolarData& getData() { return data; }
+  
+  // Historische Daten
+  void addHistoricalDataPoint();
+  HistoricalData* getHistoricalData() { return history; }
+  int getHistoryCount() const;
   
   // Simulationsmodus ein/ausschalten
   void setSimulationMode(bool mode) { simulationMode = mode; }

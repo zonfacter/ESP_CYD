@@ -10,6 +10,8 @@ DataManager dataManager;
 
 DataManager::DataManager() {
   // Konstruktor
+  // Versuche, Daten aus dem Cache zu laden
+  loadDataFromCache();
 }
 
 void DataManager::updateFromMqtt(MqttManager& mqttManager) {
@@ -60,6 +62,132 @@ void DataManager::updateFromMqtt(MqttManager& mqttManager) {
   }
   
   lastUpdate = millis();
+  
+  // Daten im Cache speichern (alle 5 Minuten)
+  if (millis() - lastCacheUpdate > 300000) { // 5 Minuten
+    saveDataToCache();
+    lastCacheUpdate = millis();
+    
+    // Historischen Datenpunkt hinzufügen
+    addHistoricalDataPoint();
+  }
+}
+
+bool DataManager::saveDataToCache() {
+  // Speichere aktuelle Daten im SPIFFS
+  if (!SPIFFS.begin(false)) {
+    DEBUG_PRINTLN("SPIFFS konnte nicht initialisiert werden beim Cachen von Daten!");
+    return false;
+  }
+  
+  // JSON-Dokument erstellen
+  JsonDocument doc;
+  
+  // Daten hinzufügen
+  doc["timestamp"] = millis();
+  doc["batterySOC"] = data.batterySOC;
+  doc["pvPower"] = data.pvPower;
+  doc["gridPower"] = data.gridPower;
+  doc["loadPower"] = data.loadPower;
+  doc["batteryPower"] = data.batteryPower;
+  doc["dailyYield"] = data.dailyYield;
+  doc["batteryVoltage"] = data.batteryVoltage;
+  doc["autarky"] = data.autarky;
+  
+  // Datei zum Schreiben öffnen
+  File file = SPIFFS.open("/solar_data_cache.json", "w");
+  if (!file) {
+    DEBUG_PRINTLN("Fehler beim Öffnen der Cache-Datei zum Schreiben");
+    return false;
+  }
+  
+  // JSON in die Datei schreiben
+  if (serializeJson(doc, file) == 0) {
+    DEBUG_PRINTLN("Fehler beim Schreiben der Daten in den Cache");
+    file.close();
+    return false;
+  }
+  
+  file.close();
+  DEBUG_PRINTLN("Solardaten erfolgreich im Cache gespeichert");
+  return true;
+}
+
+bool DataManager::loadDataFromCache() {
+  // Lade gespeicherte Daten aus SPIFFS
+  if (!SPIFFS.begin(false)) {
+    DEBUG_PRINTLN("SPIFFS konnte nicht initialisiert werden beim Laden aus dem Cache!");
+    return false;
+  }
+  
+  if (!SPIFFS.exists("/solar_data_cache.json")) {
+    DEBUG_PRINTLN("Keine Cache-Datei gefunden");
+    return false;
+  }
+  
+  File file = SPIFFS.open("/solar_data_cache.json", "r");
+  if (!file) {
+    DEBUG_PRINTLN("Fehler beim Öffnen der Cache-Datei zum Lesen");
+    return false;
+  }
+  
+  // JSON deserialisieren
+  JsonDocument doc;
+  DeserializationError error = deserializeJson(doc, file);
+  file.close();
+  
+  if (error) {
+    DEBUG_PRINT("JSON Parsing Fehler: ");
+    DEBUG_PRINTLN(error.c_str());
+    return false;
+  }
+  
+  // Daten aus JSON extrahieren
+  unsigned long timestamp = doc["timestamp"];
+  data.batterySOC = doc["batterySOC"];
+  data.pvPower = doc["pvPower"];
+  data.gridPower = doc["gridPower"];
+  data.loadPower = doc["loadPower"];
+  data.batteryPower = doc["batteryPower"];
+  data.dailyYield = doc["dailyYield"];
+  data.batteryVoltage = doc["batteryVoltage"];
+  data.autarky = doc["autarky"];
+  
+  DEBUG_PRINT("Solardaten aus Cache geladen (Alter: ");
+  DEBUG_PRINT((millis() - timestamp) / 1000 / 60);
+  DEBUG_PRINTLN(" Minuten)");
+  
+  return true;
+}
+
+bool DataManager::checkAndLoadCachedData() {
+  // Lade Daten aus dem Cache, falls MQTT nicht verfügbar ist
+  if (simulationMode) {
+    // Wenn wir im Simulationsmodus sind, verwenden wir den Cache
+    return loadDataFromCache();
+  }
+  return false; // Im Online-Modus nicht notwendig
+}
+
+void DataManager::addHistoricalDataPoint() {
+  // Füge aktuellen Datenpunkt zur Historie hinzu
+  history[historyIndex] = HistoricalData(millis(), data);
+  
+  // Index für den nächsten Eintrag
+  historyIndex = (historyIndex + 1) % MAX_HISTORY_ENTRIES;
+  
+  DEBUG_PRINTLN("Historischer Datenpunkt hinzugefügt");
+}
+
+int DataManager::getHistoryCount() const {
+  // Zähle gültige Einträge (mit Zeitstempel > 0)
+  int count = 0;
+  for (int i = 0; i < MAX_HISTORY_ENTRIES; i++) {
+    if (history[i].timestamp > 0) {
+      count++;
+    }
+  }
+  return count;
 }
 
 void DataManager::simulateData() {
@@ -145,6 +273,13 @@ void DataManager::simulateData() {
   DEBUG_PRINT("Autarkie: "); DEBUG_PRINT(data.autarky); DEBUG_PRINTLN(" %");
   
   lastUpdate = millis();
+  
+  // Füge historischen Datenpunkt hinzu (alle 30 Minuten in der Simulation)
+  static unsigned long lastHistoricalUpdate = 0;
+  if (millis() - lastHistoricalUpdate > 1800000) { // 30 Minuten
+    addHistoricalDataPoint();
+    lastHistoricalUpdate = millis();
+  }
 }
 
 void DataManager::update() {
