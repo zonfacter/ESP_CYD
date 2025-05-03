@@ -316,36 +316,37 @@ Der Solar Monitor verwendet drei JSON-Konfigurationsdateien, die im SPIFFS-Speic
 Der Solar Monitor verfügt über ein Touch-Menüsystem mit mehreren Tabs und Untermenüs. Hier ist die vollständige Menüstruktur im Überblick:
 
 ```
-ESP32 Solar Monitor
+ESP32 Solar Monitor - Umsetzungsstatus der Menüeinträge
+
 ├── System Tab
-│   ├── Solar Status        # Gesamtübersicht des Solarsystems
-│   ├── Batterie Status     # Detaillierte Batterieansicht mit Ladezeit-Berechnung
-│   ├── Netzstatus          # Netzeinspeisung/-bezug
-│   ├── PV Leistung         # Solarmodulleistung und Ertrag
-│   ├── Verbrauch           # Stromverbrauch des Hauses
-│   ├── Autarkie            # Autarkiegrad der Stromversorgung
-│   ├── Tageswerte          # Zusammenfassung der Tageswerte
-│   └── Statistik           # Längerfristige statistische Daten
+│   ├── Solar Status        # VOLLSTÄNDIG IMPLEMENTIERT - Zeigt alle wichtigen Systemparameter in Echtzeit an
+│   ├── Batterie Status     # VOLLSTÄNDIG IMPLEMENTIERT - Mit Zeitberechnung für Ziel-SOC/Min-SOC und grafischer Darstellung
+│   ├── Netzstatus          # VOLLSTÄNDIG IMPLEMENTIERT - Mit Flussrichtungsanzeige und Leistungswerten
+│   ├── PV Leistung         # TEILWEISE IMPLEMENTIERT - Grundfunktionen vorhanden, erweiterte Grafiken in Planung
+│   ├── Verbrauch           # TEILWEISE IMPLEMENTIERT - Grundanzeige vorhanden, detaillierte Verbrauchsanalyse in Planung
+│   ├── Autarkie            # TEILWEISE IMPLEMENTIERT - Prozentanzeige funktioniert, historische Darstellung in Planung
+│   ├── Tageswerte          # PLATZHALTER - Grundstruktur vorhanden, aber noch keine vollständige Implementierung
+│   └── Statistik           # NEU IN v0.4.3 - Basisfunktionen zur Anzeige historischer Daten implementiert
 │
 ├── Steuerung Tab
-│   ├── Heizung             # Heizungssteuerung
-│   ├── Pool                # Poolpumpensteuerung
-│   ├── Garten              # Gartenbewässerung
-│   ├── Licht               # Lichtsteuerung
-│   ├── Steckdosen          # Schaltbare Steckdosen
-│   ├── Lüftung             # Lüftungssteuerung
-│   ├── Rollladen           # Rollladensteuerung (NEU: Vollständig implementiert)
-│   └── Kameras             # Kameraüberwachung
+│   ├── Heizung             # BASISIMPLEMENTIERUNG - Einfache Ein/Aus-Steuerung funktioniert
+│   ├── Pool                # BASISIMPLEMENTIERUNG - Einfache Ein/Aus-Steuerung funktioniert
+│   ├── Garten              # PLATZHALTER - Nur UI-Struktur ohne Funktionalität
+│   ├── Licht               # VOLLSTÄNDIG IMPLEMENTIERT - Mit ioBroker-Integration und Statusrückmeldung
+│   ├── Steckdosen          # PLATZHALTER - Nur UI-Struktur ohne Funktionalität
+│   ├── Lüftung             # PLATZHALTER - Nur UI-Struktur ohne Funktionalität
+│   ├── Rollladen           # VOLLSTÄNDIG IMPLEMENTIERT (NEU IN v0.4.3) - Umfassende Steuerung für bis zu 6 Rolläden
+│   └── Kameras             # PLATZHALTER - Nur UI-Struktur ohne Funktionalität
 │
 └── Einstellungen Tab
-    ├── WLAN Setup          # WLAN-Verbindungskonfiguration
-    ├── MQTT Setup          # MQTT-Broker-Einstellungen
-    ├── Display             # Display-Einstellungen (Helligkeit, Timeout)
-    ├── Systeminfo          # Systeminformationen (Version, Laufzeit, Speicher)
-    ├── Updates             # Firmware-Update-Funktion
-    ├── Logs                # Systemprotokolle
-    ├── Neustart            # System-Neustart
-    └── Werkseinstellungen  # Zurücksetzen auf Standardeinstellungen
+    ├── WLAN Setup          # VOLLSTÄNDIG IMPLEMENTIERT - Mit Statusanzeige und Neuverbindungsfunktion
+    ├── MQTT Setup          # VOLLSTÄNDIG IMPLEMENTIERT - Mit Topic-Anzeige und Konfigurationsmöglichkeit
+    ├── Display             # TEILWEISE IMPLEMENTIERT - Grundeinstellungen funktionieren, erweiterte Optionen in Planung
+    ├── Systeminfo          # VOLLSTÄNDIG IMPLEMENTIERT - Zeigt alle wichtigen Systeminformationen
+    ├── Updates             # NEU IN v0.4.3 - OTA-Update-Funktion über Weboberfläche implementiert
+    ├── Logs                # PLATZHALTER - Grundstruktur vorhanden, aber keine vollständige Logging-Funktion
+    ├── Neustart            # VOLLSTÄNDIG IMPLEMENTIERT - Neustart-Funktion über UI möglich
+    └── Werkseinstellungen  # TEILWEISE IMPLEMENTIERT - Zurücksetzen der Konfiguration möglich, aber noch nicht vollständig
 ```
 
 **Navigation:**
