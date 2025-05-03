@@ -1,542 +1,234 @@
-# ESP32 Solar Monitor v0.4.1
-## Bedienungsanleitung
+# ESP32 Solar Monitor v0.4.3
+## Ergänzung zur Bedienungsanleitung
 
 ## Inhaltsverzeichnis
-1. [Überblick](#überblick)
-2. [Installation](#installation)
-3. [Erste Inbetriebnahme](#erste-inbetriebnahme)
-4. [Menüstruktur](#menüstruktur)
-5. [Einstellungen](#einstellungen)
-6. [Datenansichten](#datenansichten)
-7. [Steuerungsfunktionen](#steuerungsfunktionen)
-8. [Fehlersuche](#fehlersuche)
-9. [Anhang: Erweiterungsmöglichkeiten](#anhang-erweiterungsmöglichkeiten)
+1. [Neuerungen in Version 0.4.3](#neuerungen-in-version-043)
+2. [Heartbeat-Funktionalität](#heartbeat-funktionalität)
+3. [Rollladen-Steuerung](#rollladen-steuerung)
+4. [ioBroker-Integration](#iobroker-integration)
+5. [Webserver & Fernsteuerung](#webserver--fernsteuerung)
+6. [Steuerungsfunktionen über Web-Interface](#steuerungsfunktionen-über-web-interface)
+7. [Fehlersuche und Tipps](#fehlersuche-und-tipps)
 
 ---
 
-## Überblick
+## Neuerungen in Version 0.4.3
 
-Der ESP32 Solar Monitor ist eine umfassende Lösung zur Visualisierung und Überwachung von Solarsystemen. Diese Version 0.4.1 bietet eine modulare, konfigurierbare Plattform mit einem responsiven Touch-Interface und verschiedenen Detailansichten zur Überwachung aller wichtigen Parameter einer Solaranlage.
+Der ESP32 Solar Monitor wurde in Version 0.4.3 um zahlreiche neue Funktionen erweitert, die sowohl die Benutzerfreundlichkeit als auch die Integrationsmöglichkeiten verbessern. Zu den wichtigsten Neuerungen gehören:
 
-**Hauptfunktionen:**
-- Echtzeit-Anzeige von PV-Leistung, Batteriestatus, Netzeinspeisung und Verbrauch
-- Berechnung der verbleibenden Zeit bis zum Erreichen bestimmter Batterieladestände
-- Benutzerfreundliches Touch-Interface mit Tabs und scrollbarem Menü
-- Konfigurierbare MQTT-Verbindung zu Solar Assistant oder anderen Monitoring-Systemen
-- Simulationsmodus für Demonstrationszwecke ohne tatsächliche Solaranlage
+- **Heartbeat-Funktionalität**: Visuelle Überwachung der ioBroker-Verbindung
+- **Erweiterte Rollladensteuerung**: Vollständige Kontrolle von bis zu 6 Rollläden
+- **Verbesserte ioBroker-Integration**: Direktanbindung an BlindControl-Objekte
+- **Webserver für Fernzugriff**: Konfiguration und Steuerung über Webbrowser
+- **Optimierte Benutzeroberfläche**: Partielle Bildschirmaktualisierung für bessere Reaktionszeit
+- **Verbesserte Systemstabilität**: Robustere WLAN-Verbindung und Fehlerbehandlung
 
-**Technische Spezifikationen:**
-- Hardware: ESP32 mit 2,8" TFT-Display und XPT2046 Touchscreen
-- WLAN-Konnektivität für drahtlose Integration
-- MQTT-Protokoll zur Datenkommunikation
-- SPIFFS-Dateisystem für Konfigurationsdateien
-- Freier HEAP-Speicher: ca. 218 KB
+Diese Neuerungen machen den ESP32 Solar Monitor zu einer noch leistungsfähigeren Zentrale für Ihr Smart Home mit Solaranlage.
 
 ---
 
-## Installation
+## Heartbeat-Funktionalität
 
-### Hardware-Voraussetzungen
-- ESP32 Entwicklungsboard
-- 2,8" TFT-Display mit ILI9341-Controller
-- XPT2046 Touchscreen-Controller
-- Micro-USB-Kabel für Programmierung und Stromversorgung
+Die Heartbeat-Funktion bietet eine visuelle Echtzeit-Überwachung der Verbindung zum ioBroker-System.
 
-### Software-Installation
-1. **Arduino IDE vorbereiten:**
-   - Arduino IDE (Version 1.8.19 oder höher) installieren
-   - ESP32-Boardunterstützung über den Boardverwalter hinzufügen
-   - Folgende Bibliotheken installieren:
-     - TFT_eSPI (Version 2.5.43 oder höher)
-     - XPT2046_Touchscreen
-     - ArduinoJson (Version 7.0.0 oder höher)
-     - PubSubClient
-     - SPIFFS
+### Funktionsweise
+- In der oberen rechten Ecke des Displays wird ein kleines Herzsymbol angezeigt
+- Bei aktiver ioBroker-Verbindung "pulsiert" das Herz in roter Farbe
+- Bei verlorener Verbindung wird das Herz grau und statisch dargestellt
 
-2. **TFT_eSPI konfigurieren:**
-   - In der User_Setup.h der TFT_eSPI-Bibliothek die Pin-Belegung anpassen:
-     ```cpp
-     #define TFT_MISO 12
-     #define TFT_MOSI 13
-     #define TFT_SCLK 14
-     #define TFT_CS   15
-     #define TFT_DC   2
-     #define TFT_RST  12
-     
-     #define TOUCH_CS 33
-     ```
+### Technische Details
+- Der ESP32 sendet alle 60 Sekunden ein Heartbeat-Signal an ioBroker
+- ioBroker antwortet mit einer Bestätigung
+- Bei ausbleibender Antwort erkennt der ESP32 Verbindungsprobleme
+- Die Animation zeigt den Zustand der Verbindung in Echtzeit an
 
-3. **Firmware hochladen:**
-   - Das Projekt in der Arduino IDE öffnen
-   - ESP32 über USB anschließen
-   - Den korrekten Port und das Board (ESP32) auswählen
-   - "Hochladen" klicken, um die Firmware zu übertragen
-
-4. **Dateisystem vorbereiten:**
-   - In der Arduino IDE "ESP32 Sketch Data Upload" Tool verwenden
-   - Dieses Tool lädt die Konfigurationsdateien (JSON) in den SPIFFS-Speicher des ESP32
+### Vorteile
+- Sofortige Erkennung von Verbindungsproblemen auf einen Blick
+- Keine Fehlinterpretation veralteter Daten durch klare visuelle Anzeige
+- Automatische Wiederverbindungsversuche bei Verbindungsabbruch
 
 ---
 
-## Erste Inbetriebnahme
+## Rollladen-Steuerung
 
-1. **Konfigurationsdateien anpassen:**
-   - Die Datei `config.json` enthält die grundlegenden Einstellungen für WLAN, MQTT und Display
-   - Passen Sie insbesondere diese Einstellungen an:
-     ```json
-     "wlan": {
-       "ssid": "Ihr_WLAN_Name",
-       "password": "Ihr_WLAN_Passwort"
-     },
-     "mqtt": {
-       "broker": "IP_Adresse_Ihres_MQTT_Brokers",
-       "port": 1883
-     },
-     "battery": {
-       "capacity_ah": 360,
-       "nominal_voltage": 51.2,
-       "target_soc": 80,
-       "min_soc": 20
-     }
-     ```
+Die neue Rollladensteuerung bietet eine umfassende Kontrolle über bis zu 6 Rollläden mit einer intuitiven Benutzeroberfläche.
 
-2. **Gerät starten:**
-   - Nach dem Einschalten verbindet sich der Solar Monitor automatisch mit dem konfigurierten WLAN
-   - Anschließend wird eine Verbindung zum MQTT-Broker hergestellt
-   - Bei erfolgreicher Verbindung werden Daten in Echtzeit angezeigt
-   - Bei fehlgeschlagener Verbindung wird der Simulationsmodus aktiviert
+### Funktionsumfang
+- Steuerung von bis zu 6 individuellen Rollläden
+- Positionssteuerung von 0% (komplett offen) bis 100% (komplett geschlossen)
+- Direktsteuerung mit Auf-, Ab- und Stopp-Befehlen
+- Schnellwahl-Positionierung (0%, 25%, 50%, 75%, 100%)
+- Statusanzeige für Position und Bewegungsrichtung
+- Farbliche Hervorhebung des aktiven Rolladens
 
-3. **Anzeige prüfen:**
-   - Der Hauptbildschirm zeigt das Menü mit verschiedenen Tabs an
-   - Die Statusleiste am unteren Bildschirmrand zeigt den Verbindungsstatus
+### Bedienung
+1. Wählen Sie im "Steuerung"-Tab den Menüpunkt "Rollladen"
+2. Wählen Sie den gewünschten Rolladen (R1-R6) durch Antippen aus
+   - Der aktuelle Rolladen wird in türkis hervorgehoben
+   - Sich bewegende Rollläden werden in orange dargestellt
+3. Verwenden Sie die Auf/Stopp/Ab-Tasten für direkte Steuerung
+4. Alternativ können Sie direkt eine Zielposition über die Positionstasten (0%, 25%, 50%, 75%, 100%) anwählen
+5. Der aktuelle Status (Position, Bewegungsrichtung) wird im unteren Bereich angezeigt
+
+### Technische Hintergründe
+- Die Rollladen-Positionen werden in Prozent angegeben (0% = offen, 100% = geschlossen)
+- Die Bewegungsberechnung erfolgt anhand der eingestellten Geschwindigkeit (Standard: 3% pro Sekunde)
+- Die Steuerung erfolgt direkt über die BlindControl-Objekte in ioBroker
 
 ---
 
-## Menüstruktur
+## ioBroker-Integration
 
-Der Solar Monitor verfügt über ein Touch-Menüsystem mit mehreren Tabs und Untermenüs. Hier ist die vollständige Menüstruktur im Überblick:
+Version 0.4.3 bietet eine verbesserte Integration mit ioBroker für eine nahtlose Steuerung von Smarthome-Komponenten.
+
+### Kommunikationswege
+- **MQTT-Protokoll**: Hauptkommunikationskanal zwischen ESP32 und ioBroker
+- **Topic-basierte Steuerung**: Strukturierte Kommunikation über definierte MQTT-Topics
+- **Heartbeat-Mechanismus**: Zuverlässige Verbindungsüberwachung
+
+### ioBroker-Konfiguration
+Für die volle Funktionalität muss in ioBroker folgende Struktur vorhanden sein:
 
 ```
-ESP32 Solar Monitor
-├── System Tab
-│   ├── Solar Status        # Gesamtübersicht des Solarsystems
-│   ├── Batterie Status     # Detaillierte Batterieansicht mit Ladezeit-Berechnung
-│   ├── Netzstatus          # Netzeinspeisung/-bezug
-│   ├── PV Leistung         # Solarmodulleistung und Ertrag
-│   ├── Verbrauch           # Stromverbrauch des Hauses
-│   ├── Autarkie            # Autarkiegrad der Stromversorgung
-│   ├── Tageswerte          # Zusammenfassung der Tageswerte
-│   └── Statistik           # Längerfristige statistische Daten
-│
-├── Steuerung Tab
-│   ├── Heizung             # Heizungssteuerung
-│   ├── Pool                # Poolpumpensteuerung
-│   ├── Garten              # Gartenbewässerung
-│   ├── Licht               # Lichtsteuerung
-│   ├── Steckdosen          # Schaltbare Steckdosen
-│   ├── Lüftung             # Lüftungssteuerung
-│   ├── Rollladen           # Rollladensteuerung
-│   └── Kameras             # Kameraüberwachung
-│
-└── Einstellungen Tab
-    ├── WLAN Setup          # WLAN-Verbindungskonfiguration
-    ├── MQTT Setup          # MQTT-Broker-Einstellungen
-    ├── Display             # Display-Einstellungen (Helligkeit, Timeout)
-    ├── Systeminfo          # Systeminformationen (Version, Laufzeit, Speicher)
-    ├── Updates             # Firmware-Update-Funktion
-    ├── Logs                # Systemprotokolle
-    ├── Neustart            # System-Neustart
-    └── Werkseinstellungen  # Zurücksetzen auf Standardeinstellungen
+mqtt.0
+├── esp32solar
+│   ├── light
+│   │   └── 1
+│   │       ├── command
+│   │       └── status
+│   ├── rolladen
+│   │   ├── 1
+│   │   │   ├── currentPosition
+│   │   │   ├── targetPosition
+│   │   │   ├── direction
+│   │   │   └── moving
+│   │   ├── 2
+│   │   └── ... (weitere Rollläden)
+│   ├── heartbeat
+│   │   ├── beat
+│   │   └── response
+│   └── device (Geräteinformationen)
+└── 0_userdata.0.BlindControl.Shutter
+    ├── 1
+    │   ├── Input.obj_I_var_Target_Level
+    │   ├── Output.obj_Q_LEVEL
+    │   └── Output.obj_Q_BUSY
+    ├── 2
+    └── ... (weitere Rollläden)
 ```
 
-**Navigation:**
-- Tabs werden durch Antippen des Tab-Titels gewechselt
-- Menüpunkte werden durch Antippen ausgewählt
-- Navigation innerhalb langer Menülisten erfolgt über die Scroll-Pfeile rechts
-- Zurück zum Hauptmenü gelangt man durch Antippen des "Zurück"-Buttons in der oberen linken Ecke jeder Detailansicht
+### JavaScript-Integration in ioBroker
+Fügen Sie folgendes Skript in ioBroker ein, um die Lichtsteuerung zu aktivieren:
+
+```javascript
+// ioBroker JavaScript für Lichtsteuerung
+// Wird ausgelöst, wenn ein Befehl auf esp32solar/light/1/command eintrifft
+on({id: 'mqtt.0.esp32solar.light.1.command', change: 'any'}, function(obj) {
+    var value = obj.state.val;
+    
+    // Befehl ausführen (z.B. über Homematic, Zigbee oder andere Adapter)
+    // Beispiel: setState('hm-rpc.0.KEQ0123456.1.STATE', value === 'ON');
+    
+    // Bestätigung zurücksenden
+    setState('mqtt.0.esp32solar.light.1.status', value);
+    
+    log('Licht wurde geschaltet: ' + value);
+});
+```
+
+Für die vollständige Rollladensteuerung sollte das BlindControl-Widget in ioBroker verwendet werden.
 
 ---
 
-## Einstellungen
+## Webserver & Fernsteuerung
 
-### WLAN Setup
-In dieser Ansicht können Sie die WLAN-Verbindungsparameter einsehen und ändern:
-- Anzeige der aktuellen SSID und Verbindungsstatus
-- IP-Adresse des Geräts
-- Signalstärke (RSSI)
-- "Neu verbinden"-Button zum Neuaufbau der Verbindung
+Eine der wichtigsten Neuerungen in Version 0.4.3 ist der integrierte Webserver, der Fernzugriff und -steuerung ermöglicht.
 
-### MQTT Setup
-Hier können Sie die MQTT-Konfiguration einsehen und anpassen:
-- Broker-Adresse und Verbindungsstatus
-- Übersicht der abonnierten Topics
-- "Konfigurieren"-Button für erweiterte Einstellungen
+### Zugriff auf den Webserver
+- Der Webserver ist automatisch aktiv, sobald der ESP32 mit dem WLAN verbunden ist
+- Zugriff über die IP-Adresse des Geräts (wird beim Start im Display angezeigt)
+- Alternativ über mDNS: http://solarmonitor.local (falls vom Router unterstützt)
 
-### Display
-Einstellungen zur Anzeige und Darstellung:
-- Farbschemawahl (Hell/Dunkel)
-- Helligkeit
-- Auto-Rotation
-- Bildschirmschoner-Timeout
+### Verfügbare Webseiten
+1. **Übersicht**: Dateien im SPIFFS-Speicher, Upload- und Löschfunktionen
+2. **Monitor**: Live-Ansicht der Solardaten mit Batterie- und Systemstatus
+3. **Konfiguration bearbeiten**: Direktes Bearbeiten der JSON-Konfigurationsdateien
+4. **System-Info**: Detaillierte Hardware- und Softwareinformationen
+5. **Firmware-Update**: OTA-Update-Funktion für einfache Firmware-Aktualisierungen
 
-### Systeminfo
-Zeigt allgemeine Systeminformationen an:
-- Firmware-Version (0.4.1)
-- CPU-Taktfrequenz
-- Freier Speicher (ca. 218 KB)
-- Laufzeit seit dem letzten Neustart
+### Funktionen des Webservers
+- **Datei-Management**: Hochladen, Herunterladen und Löschen von Konfigurationsdateien
+- **Live-Monitoring**: Echtzeit-Ansicht aller Solardaten
+- **Remote-Steuerung**: Fernbedienung für Rollläden und andere Geräte
+- **OTA-Updates**: Firmware-Aktualisierung ohne USB-Kabel
+- **Konfigurationseditor**: Syntax-Highlighting-Editor für JSON-Dateien
 
 ---
 
-## Datenansichten
+## Steuerungsfunktionen über Web-Interface
 
-### Solar Status
-Die Hauptübersicht zeigt alle wichtigen Werte des Solarsystems:
-- PV-Leistung (aktuell produzierte Solarenergie)
-- Verbrauch (aktueller Stromverbrauch des Hauses)
-- Netzstatus (Einspeisung oder Bezug)
-- Batteriestatus (Laden/Entladen und Ladezustand)
-- Autarkiegrad in Prozent
+Das Web-Interface bietet umfangreiche Steuerungsmöglichkeiten für Smart Home-Geräte.
 
-### Batterie Status
-Detaillierte Ansicht des Batteriestatus mit folgenden Informationen:
-- Aktueller Ladezustand (SOC) in Prozent
-- Grafische Darstellung als Füllstandsbalken
-- Aktuelle Batterieleistung (Laden/Entladen)
-- Batteriespannung
-- **NEU in v0.4.1**: Berechnung der Zeit bis zum Erreichen des Ziel-SOC (beim Laden) oder Min-SOC (beim Entladen)
-- Gespeicherte Energie in kWh
+### Rollladensteuerung im Browser
+Unter dem Menüpunkt "Solar Monitor" im Web-Interface:
 
-**Hinweis zur Zeitberechnung:** Diese Funktion berechnet basierend auf der aktuellen Lade-/Entladerate, wie lange es dauern wird, bis die Batterie einen bestimmten Ladezustand erreicht. Die Berechnung berücksichtigt die in `config.json` definierten Batterieparameter (Kapazität, Spannung, Ziel-SOC, Min-SOC).
+1. **Rolladen-Auswahl**: Dropdown-Menü zur Auswahl eines der 6 Rollläden
+2. **Steuerungstasten**: AUF, STOP, AB-Buttons für direkte Steuerung
+3. **Positionsschieberegler**: Stufenlose Positionierung von 0-100%
+4. **Statusanzeige**: Live-Update der aktuellen Position und Bewegungsrichtung
+5. **Auto-Refresh**: Automatische Aktualisierung alle 5 Sekunden
 
-### Netzstatus
-Zeigt den aktuellen Austausch mit dem Stromnetz:
-- Grafische Darstellung der Energieflussrichtung
-- Aktuelle Leistung in Watt
-- Unterscheidung zwischen Einspeisung (grün) und Bezug (rot)
+### Bearbeitung der Konfiguration
+Unter dem Menüpunkt "Konfiguration bearbeiten":
 
-### PV Leistung
-Detailansicht der Solarstromproduktion:
-- Aktuelle Leistung der Solarmodule
-- Tagesertrag in kWh
-- Spitzenleistung des Tages
+1. Wählen Sie die zu bearbeitende Datei (z.B. config.json, menu.json)
+2. Bearbeiten Sie die Datei im Online-Editor mit Syntax-Highlighting
+3. Speichern Sie die Änderungen durch Klicken auf "Speichern"
+4. Bei wichtigen Konfigurationsänderungen wird ein Neustart empfohlen
 
-### Verbrauch
-Übersicht des Stromverbrauchs:
-- Aktueller Gesamtverbrauch
-- Verteilung auf verschiedene Verbraucher
-- Tagesverbrauch
+### OTA-Firmware-Update
+Unter dem Menüpunkt "Firmware-Update":
 
-### Autarkie
-Zeigt den Grad der Unabhängigkeit vom Stromnetz:
-- Aktueller Autarkiegrad in Prozent
-- Grafische Darstellung
-- Verlauf über die Zeit
+1. Laden Sie die neueste Firmware-Datei (.bin) von Ihrem Computer hoch
+2. Klicken Sie auf "Update starten"
+3. Warten Sie, bis der Update-Prozess abgeschlossen ist
+4. Das Gerät startet automatisch neu mit der neuen Firmware
 
 ---
 
-## Steuerungsfunktionen
+## Fehlersuche und Tipps
 
-Die Steuerungsfunktionen ermöglichen die Kontrolle verschiedener Haushaltsgeräte und -systeme. In der aktuellen Version 0.4.1 sind die folgenden Steuerungen implementiert:
+### Heartbeat-Funktionalität
+- **Problem**: Herz bleibt grau trotz aktiver ioBroker-Instanz
+  - **Lösung**: Prüfen Sie, ob das Topic `esp32solar/heartbeat/response` in ioBroker korrekt eingerichtet ist
+  - **Tipp**: Fügen Sie ein JavaScript in ioBroker ein, das auf `esp32solar/heartbeat/beat` hört und eine Antwort sendet
 
-### Heizung
-Grundlegende Steuerung der Heizungsanlage:
-- Ein-/Ausschalten der Heizung
-- Anzeige des aktuellen Status
+### Rollladensteuerung
+- **Problem**: Rollläden reagieren nicht auf Steuerungsbefehle
+  - **Lösung 1**: Prüfen Sie die Verbindung zu ioBroker (Heartbeat-Indikator)
+  - **Lösung 2**: Stellen Sie sicher, dass die BlindControl-Objekte in ioBroker korrekt konfiguriert sind
+  - **Tipp**: Verwenden Sie die Systeminfo-Seite, um den MQTT-Verbindungsstatus zu überprüfen
 
-### Pool
-Steuerung der Poolpumpe:
-- Ein-/Ausschalten der Pumpe
-- Anzeige des aktuellen Status
+- **Problem**: Rollläden-Positionsanzeige aktualisiert sich nicht
+  - **Lösung**: Prüfen Sie die MQTT-Topics für die Rollladenpositionen in ioBroker
+  - **Tipp**: Versuchen Sie, die Rollläden manuell aus ioBroker zu steuern, um die Kommunikation zu testen
 
-Weitere Steuerungsfunktionen sind für zukünftige Updates vorgesehen. Siehe dazu den Anhang über Erweiterungsmöglichkeiten.
+### Webserver
+- **Problem**: Webseite nicht erreichbar
+  - **Lösung 1**: Prüfen Sie die IP-Adresse auf dem Display
+  - **Lösung 2**: Stellen Sie sicher, dass sich Ihr Gerät im selben Netzwerk befindet
+  - **Tipp**: Verwenden Sie die mDNS-Adresse http://solarmonitor.local, falls möglich
 
----
+- **Problem**: Änderungen an der Konfiguration werden nicht übernommen
+  - **Lösung**: Starten Sie den ESP32 nach dem Speichern der Konfiguration neu
+  - **Tipp**: Erstellen Sie vor größeren Änderungen ein Backup der Konfigurationsdateien
 
-## Fehlersuche
-
-### WLAN-Verbindungsprobleme
-- Überprüfen Sie die SSID und das Passwort in der `config.json`
-- Stellen Sie sicher, dass der ESP32 innerhalb der Reichweite Ihres WLAN-Routers ist
-- Prüfen Sie, ob Ihr Router 2,4 GHz WLAN unterstützt (5 GHz wird nicht unterstützt)
-
-### MQTT-Verbindungsprobleme
-- Überprüfen Sie die IP-Adresse und den Port des MQTT-Brokers
-- Stellen Sie sicher, dass der MQTT-Broker läuft und erreichbar ist
-- Prüfen Sie die Topic-Konfiguration in `mqtt_topics.json`
-
-### Display-Probleme
-- Bei Touch-Problemen können Sie die Kalibrierungswerte in `config.h` anpassen
-- Bei Darstellungsproblemen versuchen Sie einen Reset des Geräts
-
-### Allgemeine Probleme
-- Wenn der Monitor nicht korrekt funktioniert, versuchen Sie einen Reset
-- Bei anhaltenden Problemen können Sie die Werkseinstellungen wiederherstellen
-- Überprüfen Sie die Debug-Ausgaben über den seriellen Monitor (115200 Baud)
+### Allgemeine Tipps
+- **Performance**: Die Anzeige wird nun teilweise aktualisiert statt komplett neu gezeichnet, was die Reaktionszeit verbessert
+- **Speichernutzung**: Nutzen Sie den Webserver, um den freien Speicher zu überwachen
+- **Backup**: Laden Sie regelmäßig Ihre Konfigurationsdateien über die Weboberfläche herunter
+- **Stabilität**: Wenn Probleme auftreten, prüfen Sie zuerst die WLAN-Signalstärke
 
 ---
 
-## Anhang: Erweiterungsmöglichkeiten
-
-Der ESP32 Solar Monitor ist modular aufgebaut und kann leicht um neue Funktionen erweitert werden. Mit ca. 218 KB freiem HEAP-Speicher gibt es noch viel Raum für Erweiterungen.
-
-### Erweiterung einer Menüfunktion am Beispiel "Rollladen"
-
-Um einen nicht genutzten Menüpunkt wie "Rollladen" zu implementieren, folgen Sie diesen Schritten:
-
-1. **ViewManager.h erweitern:**
-   Fügen Sie Funktionsdeklarationen für die neue Ansicht hinzu:
-   ```cpp
-   // In der ViewManager.h
-   void controlRollladen();
-   void updateRollladen();
-   ```
-
-2. **ViewManager.cpp erweitern:**
-   Implementieren Sie die Funktionen in ViewManager.cpp:
-   ```cpp
-   void ViewManager::controlRollladen() {
-     tft.setTextSize(1);
-     tft.setTextColor(TEXT_COLOR, BACKGROUND);
-     
-     tft.setCursor(20, 70);
-     tft.println("Rollladensteuerung");
-     
-     // Schaltflächen für Rollladen hoch/runter
-     drawButton(40, 100, 100, 40, "HOCH", TFT_GREEN);
-     drawButton(180, 100, 100, 40, "RUNTER", TFT_RED);
-     drawButton(110, 160, 100, 40, "STOP", TFT_BLUE);
-     
-     // Status anzeigen
-     tft.setCursor(20, 210);
-     tft.print("Status: ");
-     
-     // Hier kann der aktuelle Status abgefragt und angezeigt werden
-     // z.B. aus einem MQTT-Topic
-     String status = mqttManager.getValue("rollladen_status");
-     if (status == "up") {
-       tft.println("Hochgefahren");
-     } else if (status == "down") {
-       tft.println("Heruntergefahren");
-     } else if (status == "moving") {
-       tft.println("In Bewegung");
-     } else {
-       tft.println("Unbekannt");
-     }
-   }
-   
-   void ViewManager::updateRollladen() {
-     // Ähnlich wie controlRollladen, aber nur Aktualisierung der Werte
-     // ohne komplette Neuzeichnung des Bildschirms
-     
-     // Status aktualisieren
-     tft.fillRect(80, 210, 240, 10, BACKGROUND);
-     tft.setCursor(80, 210);
-     
-     String status = mqttManager.getValue("rollladen_status");
-     if (status == "up") {
-       tft.println("Hochgefahren");
-     } else if (status == "down") {
-       tft.println("Heruntergefahren");
-     } else if (status == "moving") {
-       tft.println("In Bewegung");
-     } else {
-       tft.println("Unbekannt");
-     }
-   }
-   ```
-
-3. **Funktionen im Konstruktor registrieren:**
-   Im Konstruktor von ViewManager die Funktionen registrieren:
-   ```cpp
-   ViewManager::ViewManager(TFT_eSPI &tft, DataManager &dataManager) 
-     : tft(tft), dataManager(dataManager) {
-     
-     // ... bestehender Code ...
-     
-     // Neue Funktion registrieren
-     viewFunctions["controlRollladen"] = &ViewManager::controlRollladen;
-     updateFunctions["controlRollladen"] = &ViewManager::updateRollladen;
-   }
-   ```
-
-4. **Touch-Funktionalität hinzufügen:**
-   Implementieren Sie die Touch-Erkennung für die Buttons:
-   ```cpp
-   // Diese Funktion wird aufgerufen, wenn in einer Detailansicht ein Touch erkannt wird
-   void handleDetailTouch(int x, int y) {
-     // ... bestehender Code ...
-     
-     // Für Rollladensteuerung
-     if (currentDetailFunction == "controlRollladen") {
-       // Prüfen auf "HOCH"-Button
-       if (isInBounds(x, y, 40, 100, 140, 140)) {
-         // MQTT-Befehl zum Hochfahren senden
-         mqttManager.publish("rollladen/command", "up");
-       }
-       // Prüfen auf "RUNTER"-Button
-       else if (isInBounds(x, y, 180, 100, 280, 140)) {
-         // MQTT-Befehl zum Runterfahren senden
-         mqttManager.publish("rollladen/command", "down");
-       }
-       // Prüfen auf "STOP"-Button
-       else if (isInBounds(x, y, 110, 160, 210, 200)) {
-         // MQTT-Befehl zum Stoppen senden
-         mqttManager.publish("rollladen/command", "stop");
-       }
-     }
-   }
-   ```
-
-5. **MQTT-Topics hinzufügen:**
-   Erweitern Sie die `mqtt_topics.json` um neue Topics für die Rollladensteuerung:
-   ```json
-   {
-     "name": "rollladen_status",
-     "topic": "home/rollladen/status",
-     "description": "Status der Rollläden",
-     "unit": "",
-     "color": "TFT_BLUE"
-   },
-   {
-     "name": "rollladen_position",
-     "topic": "home/rollladen/position",
-     "description": "Position der Rollläden in Prozent",
-     "unit": "%",
-     "color": "TFT_BLUE"
-   }
-   ```
-
-6. **MQTT-Publish-Funktion erweitern:**
-   Fügen Sie eine Publish-Methode zum MqttManager hinzu:
-   ```cpp
-   // In MqttManager.h
-   bool publish(const String &topic, const String &message);
-   
-   // In MqttManager.cpp
-   bool MqttManager::publish(const String &topic, const String &message) {
-     if (!mqttClient.connected()) {
-       return false;
-     }
-     
-     return mqttClient.publish(topic.c_str(), message.c_str());
-   }
-   ```
-
-### Integration von verschiedenen Schnittstellen
-
-Der ESP32 Solar Monitor kann mit verschiedenen Schnittstellen erweitert werden, um die Steuerungsfunktionen zu verbessern:
-
-#### RFLink Integration
-```cpp
-// Beispiel für RFLink-Integration (433/868 MHz Funkgeräte)
-#include <RFLink.h>
-
-RFLink rflink(Serial2); // Verwenden des zweiten seriellen Ports des ESP32
-
-void setupRFLink() {
-  Serial2.begin(57600, SERIAL_8N1, RX_PIN, TX_PIN); // Typische Baudrate für RFLink
-  rflink.begin();
-}
-
-void sendRFLinkCommand(const String &protocol, const String &id, const String &command) {
-  rflink.sendCommand(protocol, id, command);
-}
-```
-
-#### Modbus Integration
-```cpp
-// Beispiel für Modbus-Integration (z.B. für Wechselrichter)
-#include <ModbusMaster.h>
-
-ModbusMaster modbus;
-
-void setupModbus() {
-  Serial2.begin(9600, SERIAL_8N1, RX_PIN, TX_PIN);
-  modbus.begin(1, Serial2); // Slave-Adresse 1
-}
-
-float readModbusRegister(uint16_t reg) {
-  uint8_t result = modbus.readHoldingRegisters(reg, 1);
-  if (result == modbus.ku8MBSuccess) {
-    return modbus.getResponseBuffer(0);
-  }
-  return -1;
-}
-```
-
-#### CAN-Bus Integration
-```cpp
-// Beispiel für CAN-Bus-Integration (z.B. für BMS-Systeme)
-#include <ESP32CAN.h>
-#include <CAN_config.h>
-
-CAN_device_t CAN_cfg;
-
-void setupCANBus() {
-  CAN_cfg.speed = CAN_SPEED_500KBPS;
-  CAN_cfg.tx_pin_id = GPIO_NUM_5;
-  CAN_cfg.rx_pin_id = GPIO_NUM_4;
-  CAN_cfg.rx_queue = xQueueCreate(10, sizeof(CAN_frame_t));
-  ESP32Can.CANInit();
-}
-
-void sendCANMessage(uint32_t id, uint8_t* data, uint8_t length) {
-  CAN_frame_t frame;
-  frame.FIR.B.FF = CAN_frame_std;
-  frame.MsgID = id;
-  frame.FIR.B.DLC = length;
-  memcpy(frame.data.u8, data, length);
-  ESP32Can.CANWriteFrame(&frame);
-}
-```
-
-#### Home Assistant MQTT Integration
-Home Assistant verwendet das MQTT-Discovery-Protokoll, wodurch Geräte automatisch erkannt werden können:
-
-```cpp
-// Beispiel für Home Assistant MQTT-Discovery
-void registerHomeAssistantDevice() {
-  // Konfigurationsthema für einen Schalter
-  String configTopic = "homeassistant/switch/esp32_monitor/rolladen/config";
-  
-  // Konfiguration als JSON
-  JsonDocument config;
-  config["name"] = "Rollladen";
-  config["device_class"] = "switch";
-  config["state_topic"] = "home/rollladen/status";
-  config["command_topic"] = "home/rollladen/command";
-  config["payload_on"] = "up";
-  config["payload_off"] = "down";
-  config["unique_id"] = "esp32_rollladen_1";
-  
-  // Geräteinformationen
-  JsonObject device = config.createNestedObject("device");
-  device["identifiers"] = "esp32_solar_monitor";
-  device["name"] = "ESP32 Solar Monitor";
-  device["model"] = "Solar Monitor v0.4.1";
-  device["manufacturer"] = "DIY";
-  
-  // Serialisieren und veröffentlichen
-  String configPayload;
-  serializeJson(config, configPayload);
-  mqttManager.publish(configTopic, configPayload);
-}
-```
-
-#### ioBroker Integration
-ioBroker kann direkt über MQTT angesprochen werden:
-
-```cpp
-// Beispiel für ioBroker-Integration über MQTT
-void setupIoBroker() {
-  // MQTT-Topics für ioBroker
-  mqttManager.subscribe("iobroker_status", "iobroker/status");
-  mqttManager.subscribe("iobroker_command", "iobroker/command");
-  
-  // Status an ioBroker melden
-  mqttManager.publish("iobroker/devices/esp32_monitor/info", "{\"version\":\"0.4.1\",\"ip\":\"" + WiFi.localIP().toString() + "\"}");
-}
-```
-
-Mit diesen Beispielen können Sie den ESP32 Solar Monitor um verschiedene Schnittstellen erweitern und an Ihre spezifischen Bedürfnisse anpassen. Der vorhandene freie HEAP-Speicher von 218 KB bietet ausreichend Raum für mehrere dieser Erweiterungen.
+Diese Anleitung ergänzt die bestehende Dokumentation für den ESP32 Solar Monitor und erklärt die neuen Funktionen der Version 0.4.3. Für grundlegende Einstellungen und Bedienung konsultieren Sie bitte die Hauptanleitung der Version 0.4.1.
