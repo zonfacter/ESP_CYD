@@ -1,3 +1,4 @@
+
 /**
  * config.h - Zentrale Konfigurationsdatei
  */
@@ -6,21 +7,23 @@
 #define CONFIG_H
 
 #include <Arduino.h>
+#include "version_constants.h"
 
 // Debugging
 #define DEBUG_ENABLED true
 #define DEBUG_BAUD_RATE 115200
 #define DEBUG_SERIAL Serial
 
-// Debug Makros
+
+// Debug-Makros definieren
 #if DEBUG_ENABLED
-  #define DEBUG_BEGIN(baud) DEBUG_SERIAL.begin(baud)
   #define DEBUG_PRINT(...) DEBUG_SERIAL.print(__VA_ARGS__)
   #define DEBUG_PRINTLN(...) DEBUG_SERIAL.println(__VA_ARGS__)
+  #define DEBUG_PRINTF(...) DEBUG_SERIAL.printf(__VA_ARGS__)
 #else
-  #define DEBUG_BEGIN(baud)
   #define DEBUG_PRINT(...)
   #define DEBUG_PRINTLN(...)
+  #define DEBUG_PRINTF(...)
 #endif
 
 // Display-Konfiguration
@@ -66,14 +69,26 @@
 #define SCROLL_ACTIVE_COLOR TFT_ORANGE
 #define SCROLL_INACTIVE_COLOR TFT_DARKGREY
 
+// Display-Konfiguration
+#define SCREEN_WIDTH 320
+#define SCREEN_HEIGHT 240
+#define DISPLAY_COLOR_INVERTED false  // Auf true setzen für USB-C Variante mit invertierten Farben
+
 // MQTT Konfiguration
-#define MQTT_BROKER "IP_ADRESS_MQTT_BROKER"
+#define MQTT_BROKER "192.168.2.54"
 #define MQTT_PORT 1883
 #define MQTT_CLIENT_ID "ESP32SolarMonitor-"
 #define MQTT_UPDATE_INTERVAL 15000  // 15 Sekunden
 
+// OTA-Update Konfiguration
+#define OTA_DEFAULT_PORT 3232
+#define OTA_DEFAULT_HOSTNAME "ESP32SolarMonitor"
+
+// Display Timeout (in Sekunden)
+#define DEFAULT_DISPLAY_TIMEOUT 600  // 10 Minuten Standardwert
+
 // Default WLAN-Daten
-#define DEFAULT_WIFI_SSID "Your_SSID"
-#define DEFAULT_WIFI_PASS "Your_Password"
+#define DEFAULT_WIFI_SSID "YOUR_SSID"
+#define DEFAULT_WIFI_PASS "YOUR_PW"
 
 #endif // CONFIG_H

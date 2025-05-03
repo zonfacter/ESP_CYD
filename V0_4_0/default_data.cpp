@@ -1,21 +1,24 @@
 /**
  * default_data.cpp - Standard-Konfigurationsdaten
  */
-
+// Für Display-Typ: "micro_usb" oder "usb_c"
+// Für Invertierung: false für Micro-USB, true für USB-C
 #include "default_data.h"
 
 // Konfigurationsdaten
 const char* DEFAULT_CONFIG_JSON = R"({
   "wlan": {
     "ssid": "YOUR_SSID",
-    "password": "YOUR_PASSWORD"
+    "password": "YOUR_PW"
   },
   "mqtt": {
-    "broker": "IP_ADRESS_MQTT_BROKER",
+    "broker": "192.168.2.54",
     "port": 1883,
     "client_id_prefix": "ESP32SolarMonitor-"
   },
   "display": {
+    "type": "micro_usb",
+    "inverted": false,
     "brightness": 100,
     "timeout": 600,
     "theme": "dark"
@@ -113,7 +116,7 @@ const char* DEFAULT_MENU_JSON = R"({
         },
         {
           "name": "Rollladen",
-          "function": "controlShutters",
+          "function": "controlRolladen",
           "icon": "window"
         },
         {

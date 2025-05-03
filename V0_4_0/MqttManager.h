@@ -54,7 +54,8 @@ public:
 
   
   bool isConnected() { return connected; }
-  
+bool publish(const String &topic, const String &payload, bool retained = false);
+  bool publishWithConfirmation(const String &topic, const String &payload, const String &confirmationTopic, unsigned long timeout = 5000);
   // Getter für topics hinzufügen (optional, für Debugging)
   const std::vector<MqttTopic>& getTopics() const { return topics; }
   

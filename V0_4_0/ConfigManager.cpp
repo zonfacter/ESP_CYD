@@ -3,6 +3,7 @@
  */
 
 #include "ConfigManager.h"
+#include "config.h"
 
 // Globale Instanz
 ConfigManager configManager;

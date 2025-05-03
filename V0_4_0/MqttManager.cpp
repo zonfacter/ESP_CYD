@@ -55,16 +55,22 @@ void MqttManager::handleCallback(char* topic, byte* payload, unsigned int length
 }
 
 MqttManager::MqttManager() : mqttClient(wifiClient) {
-  // Konstruktor
+  // Verwende die letzten 4 Zeichen der MAC-Adresse für die Client-ID
+  String mac = WiFi.macAddress();
+  mac.replace(":", ""); // Entferne die Doppelpunkte
+  clientId = MQTT_CLIENT_ID + mac.substring(mac.length() - 4);
+  
+  DEBUG_PRINT("MQTT Client-ID: ");
+  DEBUG_PRINTLN(clientId);
 }
 
 bool MqttManager::begin(const String &broker, int port) {
   this->broker = broker;
   this->port = port;
   
-  // Generiere eine zufällige Client-ID
-  clientId = MQTT_CLIENT_ID;
-  clientId += String(random(0xffff), HEX);
+  String mac = WiFi.macAddress();
+  mac.replace(":", ""); // Entferne die Doppelpunkte
+  clientId = MQTT_CLIENT_ID + mac.substring(mac.length() - 4); // Letzte 4 Zeichen
   
   DEBUG_PRINT("MQTT Client-ID: ");
   DEBUG_PRINTLN(clientId);
@@ -78,7 +84,7 @@ bool MqttManager::begin(const String &broker, int port) {
   
   // Verbindung versuchen
   if (!mqttClient.connected()) {
-    DEBUG_PRINT("Verbinde mit MQTT-Broker ");
+    DEBUG_PRINT("Verbinde mit Standard MQTT-Manager-Broker ");
     DEBUG_PRINT(broker);
     DEBUG_PRINT(":");
     DEBUG_PRINTLN(port);
@@ -94,7 +100,7 @@ bool MqttManager::begin(const String &broker, int port) {
         DEBUG_PRINTLN(topic.topic);
       }
     } else {
-      DEBUG_PRINT("MQTT-Verbindung fehlgeschlagen, rc=");
+      DEBUG_PRINT("Standard MQTT-Manager-Verbindung fehlgeschlagen, rc=");
       DEBUG_PRINTLN(mqttClient.state());
       connected = false;
     }
@@ -112,10 +118,10 @@ void MqttManager::update() {
     if (now - lastReconnectAttempt > 5000) {  // Alle 5 Sekunden versuchen
       lastReconnectAttempt = now;
       
-      DEBUG_PRINTLN("MQTT Verbindung verloren, versuche erneut...");
+      DEBUG_PRINTLN("Standard MQTT-Manager: Verbindung verloren, versuche erneut...");
       
       if (mqttClient.connect(clientId.c_str())) {
-        DEBUG_PRINTLN("MQTT Verbindung wiederhergestellt");
+        DEBUG_PRINTLN("Standard MQTT-Manager: Verbindung wiederhergestellt");
         connected = true;
         
         // Abonniere alle konfigurierten Topics
@@ -125,7 +131,7 @@ void MqttManager::update() {
           DEBUG_PRINTLN(topic.topic);
         }
       } else {
-        DEBUG_PRINT("MQTT-Reconnect fehlgeschlagen, rc=");
+        DEBUG_PRINT("Standard MQTT-Manager-Reconnect fehlgeschlagen, rc=");
         DEBUG_PRINTLN(mqttClient.state());
       }
     }
@@ -178,7 +184,7 @@ bool MqttManager::loadDefaultTopics() {
   subscribe("battery_voltage", "solar_assistant/inverter_1/battery_voltage/state");
   subscribe("daily_yield", "solar_assistant/inverter_1/energy_day/state");
   
-  DEBUG_PRINTLN("Default MQTT-Topics geladen");
+  DEBUG_PRINTLN("Default SolarAssistant-MQTT-Topics geladen");
   return true;
 }
 
@@ -234,4 +240,71 @@ bool MqttManager::loadTopicsFromConfig(const String &filename) {
   
   DEBUG_PRINTLN("MQTT-Topics aus Konfiguration geladen");
   return true;
+}
+
+
+
+// In MqttManager.cpp
+bool MqttManager::publish(const String &topic, const String &payload, bool retained) {
+  if (!mqttClient.connected()) {
+    DEBUG_PRINTLN("MQTT nicht verbunden, konnte nicht veröffentlichen");
+    return false;
+  }
+  
+  DEBUG_PRINT("Veröffentliche auf Topic: ");
+  DEBUG_PRINT(topic);
+  DEBUG_PRINT(" Payload: ");
+  DEBUG_PRINTLN(payload);
+  
+  return mqttClient.publish(topic.c_str(), payload.c_str(), retained);
+}
+
+// Diese Methode wartet auf eine Bestätigung auf einem bestimmten Topic
+bool MqttManager::publishWithConfirmation(const String &topic, const String &payload, const String &confirmationTopic, unsigned long timeout) {
+  // Statische Variablen für den Lambda-Callback
+  static String expectedTopic = "";
+  static bool confirmed = false;
+  
+  // Variablen zurücksetzen
+  expectedTopic = confirmationTopic;
+  confirmed = false;
+  
+  // Eigenständiger Lambda-Callback
+  auto confirmationCallback = [](char* topic, byte* payload, unsigned int length) {
+    String topicStr = String(topic);
+    
+    if (topicStr == expectedTopic) {
+      confirmed = true;
+      DEBUG_PRINTLN("Bestätigung erhalten!");
+    } else {
+      // Normale Verarbeitung für andere Topics
+      mqttManager.handleCallback(topic, payload, length);
+    }
+  };
+  
+  // Temporär den Callback setzen
+  mqttClient.setCallback(confirmationCallback);
+  
+  // Bestätigungstopic abonnieren
+  mqttClient.subscribe(confirmationTopic.c_str());
+  
+  // Nachricht senden
+  bool published = publish(topic, payload);
+  if (!published) {
+    // Fehlgeschlagen, Standard-Callback wiederherstellen
+    mqttClient.setCallback(staticCallback);
+    return false;
+  }
+  
+  // Auf Bestätigung warten
+  unsigned long startTime = millis();
+  while (!confirmed && (millis() - startTime < timeout)) {
+    mqttClient.loop();
+    delay(10);
+  }
+  
+  // Standard-Callback wiederherstellen
+  mqttClient.setCallback(staticCallback);
+  
+  return confirmed;
 }
