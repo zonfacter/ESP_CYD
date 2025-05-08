@@ -1,19 +1,44 @@
 /**
  * ESP32_SolarMonitor.ino - Hauptsketch für den ESP32 Solar Monitor
  * Version 0.4.3 - Erweiterte Funktionalität und Verbesserungen
+ * 
+ * Dieses Projekt implementiert einen Solar-Monitor mit ESP32, der Daten von einer PV-Anlage
+ * visualisiert und über WLAN und MQTT mit ioBroker kommuniziert.
+ * 
+ * Funktionalitäten:
+ * - TFT-Display mit Touch zur Anzeige der Solarwerte
+ * - Webserver für Konfiguration und Fernzugriff
+ * - MQTT-Kommunikation mit ioBroker
+ * - Rollladen-Steuerung anhand von Solarwerten
+ * - OTA-Updates für einfache Firmware-Aktualisierung
  */
+//=====================================================================
+// BIBLIOTHEKEN UND INCLUDES
+//=====================================================================
 
+// System- und Hardware-Bibliotheken
 #include <SPI.h>
 #include <TFT_eSPI.h>
 #include <XPT2046_Touchscreen.h>
-#include <WiFi.h>
+
+// Dateisystem und Datenverarbeitung
 #include <SPIFFS.h>
 #include <ArduinoJson.h>
+
+// Netzwerk-Bibliotheken
+#include <WiFi.h>
 #include <ESPmDNS.h>
 #include <WiFiUdp.h>
+#include <DNSServer.h>
+
+// OTA-Update
 #include <ArduinoOTA.h>
+
+// Eigene Konfigurationen und Konstanten
 #include "config.h"
 #include "version_constants.h"
+
+// Manager-Klassen für verschiedene Funktionen
 #include "DataManager.h"
 #include "MqttManager.h"
 #include "ConfigManager.h"
@@ -21,6 +46,10 @@
 #include "ViewManager.h"
 #include "IoBrokerManager.h"
 #include "WebServer.h"
+
+//=====================================================================
+// HARDWARE-INITIALISIERUNG
+//=====================================================================
 
 // Display Setup
 TFT_eSPI tft = TFT_eSPI();
@@ -31,40 +60,79 @@ SPIClass touchSPI = SPIClass(VSPI);
 // Touchscreen-Initialisierung mit XPT2046_CS und XPT2046_IRQ
 XPT2046_Touchscreen touch(XPT2046_CS, XPT2046_IRQ);
 
-// Instanzen der Manager-Klassen
+//=====================================================================
+// EXTERNE MANAGER-INSTANZEN
+//=====================================================================
+
+// Diese Manager-Instanzen sind bereits in ihren .cpp-Dateien definiert
+// Daher verwenden wir hier 'extern' um auf sie zu verweisen
+extern DataManager dataManager;
+extern ConfigManager configManager;
+extern IoBrokerManager ioBrokerManager;
+extern MqttManager mqttManager;
+
+// Diese Manager werden hier definiert (da sie nicht in eigenen .cpp-Dateien definiert sind)
 MenuSystem menuSystem(tft);
 ViewManager viewManager(tft, dataManager);
 
-// Statusvariablen
-bool inDetailView = false;
-String currentDetailFunction = "";
-int selectedRolladen = 6;
-int displayTimeout = DEFAULT_DISPLAY_TIMEOUT;
+//=====================================================================
+// GLOBALE ZUSTANDSVARIABLEN
+//=====================================================================
+
+// UI-Status
+bool inDetailView = false;                  // Detailansicht aktiv?
+String currentDetailFunction = "";          // Aktuelle Detailfunktion
+int selectedRolladen = 6;                   // Ausgewählter Rolladen
+int displayTimeout = DEFAULT_DISPLAY_TIMEOUT; // Display-Timeout in Sekunden
 
 // Verbindungsstatus
-bool wifiConnected = false;
-bool mqttConnected = false;
-bool ioBrokerConnected = false;
-
-// OTA Update Status
-bool otaInProgress = false;
-
-// Touch entsprellem
-static unsigned long lastTouchTime = 0;
-const unsigned long TOUCH_DEBOUNCE_MS = 150; // 150ms Debounce-Zeit
+bool wifiConnected = false;                 // WLAN-Verbindung hergestellt
+bool mqttConnected = false;                 // MQTT-Verbindung hergestellt
+bool ioBrokerConnected = false;             // ioBroker erreichbar
+bool apModeActive = false;                  // Access Point Modus aktiv
 
 // System-Status
-unsigned long lastUserInteractionTime = 0;
-bool displaySleepMode = false;
-uint8_t displayBrightness = 100; // Standardhelligkeit
+bool restartFlag = false;                   // Neustart angefordert
+unsigned long restartTime = 0;              // Zeitpunkt für Neustart
+bool otaInProgress = false;                 // OTA-Update läuft
 
-// Funktionsprototypen
+// Externe Variablen von anderen Modulen
+extern bool webServerRunning;                // Definiert in WebServer.cpp
+
+// Display und Benutzerinteraktion
+static unsigned long lastTouchTime = 0;      // Letzte Touch-Zeit für Debounce
+const unsigned long TOUCH_DEBOUNCE_MS = 150; // Touch-Entprellzeit
+unsigned long lastUserInteractionTime = 0;   // Letzte Benutzeraktion
+bool displaySleepMode = false;               // Display im Schlafmodus
+uint8_t displayBrightness = 100;             // Standardhelligkeit
+
+//=====================================================================
+// EXTERNE FUNKTIONEN UND VARIABLEN
+//=====================================================================
+
+// Aus WebServer.cpp
+extern DNSServer dnsServer;
+extern const byte DNS_PORT;
+extern void setupWebServerAP();
+extern void startAccessPoint();
+extern void handleWebServer();
+
+//=====================================================================
+// FUNKTIONSPROTOTYPEN
+//=====================================================================
+
+// Utility-Funktionen
 bool isInBounds(int x, int y, int x1, int y1, int x2, int y2);
 bool setup_wifi(const char* ssid, const char* password, int delayTime);
 void setupOTA();
 void checkDisplaySleep();
 void wakeDisplay();
-void printSystemDiagnostics(); 
+void printSystemDiagnostics();
+
+//=====================================================================
+// HAUPTFUNKTIONEN
+//=====================================================================
+
 
 void setup() {
   // Serielle Verbindung initialisieren
@@ -76,24 +144,51 @@ void setup() {
   DEBUG_PRINTLN("Build: " APP_BUILD_DATE " " APP_BUILD_TIME);
   DEBUG_PRINTLN("==========================================");
   
-// WLAN vorbereitend initialisieren
-WiFi.persistent(false);  // Erst persistent ausschalten
-delay(500);
-WiFi.disconnect(true, true);  // Dann trennen ohne zu speichern
-WiFi.mode(WIFI_OFF);
-delay(500);
-WiFi.mode(WIFI_STA);
-delay(500);
-WiFi.setSleep(false);
+  // WLAN vorbereitend initialisieren
+  WiFi.persistent(false);  // Erst persistent ausschalten
+  delay(500);
+  WiFi.disconnect(true, true);  // Dann trennen ohne zu speichern
+  WiFi.mode(WIFI_OFF);
+  delay(500);
+  WiFi.mode(WIFI_STA);
+  delay(500);
+  WiFi.setSleep(false);
   
-  // SPIFFS und Konfigurationsmanager ZUERST initialisieren
+  // SPIFFS und Konfigurationsmanager initialisieren
   if (!configManager.begin()) {
     Serial.println("SPIFFS Fehler!");
     // Wir gehen trotzdem weiter mit Standardwerten
+  } else {
+    // Historische Daten aus SPIFFS laden
+    if (dataManager.loadHistoricalDataFromStorage()) {
+      DEBUG_PRINTLN("Historische Daten erfolgreich geladen");
+    } else {
+      DEBUG_PRINTLN("Keine historischen Daten gefunden oder Fehler beim Laden");
+    }
   }
   
-  // Display mit Konfiguration initialisieren - NACH configManager.begin()
-  initializeDisplayFromConfig();
+  // Display initialisieren
+  tft.init();
+  tft.setRotation(1);
+  tft.fillScreen(TFT_BLACK);
+  tft.setTextColor(TFT_WHITE, TFT_BLACK);
+  
+  // Display-Einstellungen aus Konfiguration laden
+  JsonDocument displayConfig;
+  if (configManager.loadJsonConfig("/config.json", displayConfig)) {
+    if (displayConfig["display"].is<JsonObject>()) {
+      // Invertierte Anzeige prüfen
+      if (displayConfig["display"]["inverted"].is<bool>() && 
+          displayConfig["display"]["inverted"].as<bool>()) {
+        tft.invertDisplay(true);
+      }
+      
+      // Display-Timeout laden
+      if (displayConfig["display"]["timeout"].is<int>()) {
+        displayTimeout = displayConfig["display"]["timeout"].as<int>();
+      }
+    }
+  }
   
   // Touchscreen initialisieren
   touchSPI.begin(XPT2046_CLK, XPT2046_MISO, XPT2046_MOSI, XPT2046_CS);
@@ -107,147 +202,177 @@ WiFi.setSleep(false);
   tft.println("Initialisiere...");
   
   // Logo anzeigen
-  drawStartLogo();
-  // Bildschirm aufräumen Schwarz
+  tft.fillCircle(SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2 - 30, 40, TFT_YELLOW);
+  tft.setTextSize(2);
+  tft.setCursor(40, SCREEN_HEIGHT - 60);
+  tft.println("ESP32 Solar Monitor");
+  delay(2000);
+  
+  // Bildschirm leeren
   tft.fillScreen(TFT_BLACK);
-
-  // SPIFFS und Konfigurationsmanager initialisieren
-  if (!configManager.begin()) {
-    tft.setTextColor(TFT_RED, BACKGROUND);
-    tft.setCursor(40, 160);
-    tft.println("SPIFFS Fehler!");
-    delay(3000);
+  
+  // Standardwerte für WLAN setzen
+  const char* ssid = DEFAULT_WIFI_SSID;
+  const char* password = DEFAULT_WIFI_PASS;
+  bool useDefaultWiFi = true;
+  
+  // WLAN-Konfiguration aus Speicher laden
+  JsonDocument wifiConfig;
+  if (configManager.loadJsonConfig("/config.json", wifiConfig)) {
+    // Wenn gültige WLAN-Daten vorhanden sind, diese verwenden
+    if (wifiConfig["wlan"].is<JsonObject>() && 
+        wifiConfig["wlan"]["ssid"].is<const char*>() && 
+        wifiConfig["wlan"]["password"].is<const char*>()) {
+        
+      ssid = wifiConfig["wlan"]["ssid"];
+      password = wifiConfig["wlan"]["password"];
+      
+      // Prüfen, ob es nicht die Standardwerte sind
+      if (strcmp(ssid, DEFAULT_WIFI_SSID) != 0 && 
+          strcmp(password, DEFAULT_WIFI_PASS) != 0) {
+        useDefaultWiFi = false;
+      }
+    }
   }
   
-  // Versuche, Konfiguration aus SPIFFS zu laden
-  JsonDocument config;
-  if (configManager.loadJsonConfig("/config.json", config)) {
-    // Display-Einstellungen laden
-      if (config["display"].is<JsonObject>() && config["display"]["timeout"].is<int>()) {
-        displayTimeout = config["display"]["timeout"].as<int>();
-      }
-    // WLAN-Konfiguration laden
-    const char* ssid = config["wlan"]["ssid"];
-    const char* password = config["wlan"]["password"];
+  // Access Point starten, wenn Standardwerte verwendet werden
+  if (useDefaultWiFi) {
+    DEBUG_WARNING("Standard-WLAN-Konfiguration erkannt.");
+    DEBUG_INFO("Initialisiere AP-Modus...");
     
-    // WLAN-Verbindung aufbauen
-    DEBUG_PRINTLN("Starte WLAN-Verbindung...");
-    DEBUG_PRINT("SSID: ");
-    DEBUG_PRINTLN(ssid);
-    DEBUG_PRINT("Passwort: ");
-    DEBUG_PRINTLN("********"); // Passwort nicht im Log anzeigen
+    tft.setTextSize(1);
+    tft.setCursor(20, 70);
+    tft.println("Starte Access Point Modus...");
     
+    // AP-Modus initialisieren
+    startAccessPoint();
+    
+    DEBUG_INFO("AP-Modus wurde initialisiert, apModeActive = " + String(apModeActive ? "true" : "false"));
+    DEBUG_INFO("WebServer Status: " + String(webServerRunning ? "Läuft" : "Gestoppt"));
+    
+    // Simulationsmodus aktivieren
+    dataManager.setSimulationMode(true);
+  }
+  else {
+    // WLAN-Verbindung mit gespeicherten Daten aufbauen
+    DEBUG_INFO("Starte WLAN-Verbindung mit gespeicherten Daten...");
+    tft.setTextSize(1);
+    tft.setCursor(20, 70);
+    tft.println("Verbinde mit WLAN: ");
+    tft.println(ssid);
+    
+    // Rolladen-Auswahl setzen
     viewManager.setSelectedRolladen(selectedRolladen);
-
-    // Verbindung mit längerer Verzögerung
-    wifiConnected = setup_wifi(ssid, password, 10000); // 10 Sekunden Verzögerung
     
-    if (wifiConnected) {
-      DEBUG_PRINTLN("WLAN verbunden!");
-      DEBUG_PRINT("RSSI: ");
-      DEBUG_PRINTLN(WiFi.RSSI()); // Signalstärke, falls verfügbar
+    // WLAN verbinden
+    WiFi.begin(ssid, password);
+    
+    int attempts = 0;
+    while (WiFi.status() != WL_CONNECTED && attempts < 20) {
+      delay(500);
+      tft.print(".");
+      attempts++;
+    }
+    
+    // Verbindungsergebnis prüfen
+    if (WiFi.status() == WL_CONNECTED) {
+      wifiConnected = true;
       tft.println("\nVerbunden!");
-      tft.setCursor(80, tft.getCursorY() + 10);
+      tft.setCursor(20, tft.getCursorY() + 10);
       tft.print("IP: ");
       tft.println(WiFi.localIP().toString());
       
       // OTA Updates aktivieren
-      setupOTA();
+      ArduinoOTA.setHostname("ESP32SolarMonitor");
+      ArduinoOTA.setPassword("admin");
+      ArduinoOTA.begin();
       tft.println("OTA Updates aktiviert");
       
       // Webserver für Konfiguration starten
       setupWebServer();
       tft.println("Webserver gestartet");
-
-      // WICHTIG: Verzögerung vor MQTT-Verbindung hinzufügen
-      delay(3000);
       
-      // MQTT-Konfiguration laden und initialisieren
-      const char* mqtt_broker = config["mqtt"]["broker"];
-      int mqtt_port = config["mqtt"]["port"];
+      // Kurze Verzögerung vor MQTT-Verbindung
+      delay(1000);
       
-      mqttConnected = mqttManager.begin(mqtt_broker, mqtt_port);
-      if (mqttConnected) {
-        tft.println("MQTT verbunden!");
-        
-        // MQTT-Topics aus Konfigurationsdatei laden
-        if (mqttManager.loadTopicsFromConfig("/mqtt_topics.json")) {
-          tft.println("MQTT-Topics geladen");
-        } else {
-          tft.println("Standard-MQTT-Topics verwendet");
-          mqttManager.loadDefaultTopics();
+      // MQTT-Verbindungen initialisieren
+      JsonDocument mqttConfig;
+      if (configManager.loadJsonConfig("/config.json", mqttConfig)) {
+        // MQTT-Hauptverbindung
+        if (mqttConfig["mqtt"].is<JsonObject>()) {
+          const char* mqtt_broker = mqttConfig["mqtt"]["broker"];
+          int mqtt_port = mqttConfig["mqtt"]["port"];
+          
+          // MQTT verbinden
+          mqttConnected = mqttManager.begin(mqtt_broker, mqtt_port);
+          if (mqttConnected) {
+            tft.println("MQTT verbunden!");
+            
+            // Topics laden
+            if (mqttManager.loadTopicsFromConfig("/mqtt_topics.json")) {
+              DEBUG_INFO("MQTT-Topics aus Datei geladen");
+            } else {
+              mqttManager.loadDefaultTopics();
+              DEBUG_INFO("Standard-MQTT-Topics verwendet");
+            }
+            
+            // Echtdaten-Modus aktivieren
+            dataManager.setSimulationMode(false);
+            
+            // Callback für Datenaktualisierung
+            mqttManager.onDataUpdate = []() {
+              dataManager.updateFromMqtt(mqttManager);
+              if (inDetailView) {
+                viewManager.updateView();
+              }
+            };
+          } else {
+            tft.println("MQTT-Verbindung fehlgeschlagen");
+            DEBUG_WARNING("MQTT-Verbindung fehlgeschlagen");
+            dataManager.setSimulationMode(true);
+          }
         }
         
-        // Simulationsmodus ausschalten, da wir echte Daten haben
-        dataManager.setSimulationMode(false);
+        // Verzögerung zwischen MQTT-Verbindungen
+        delay(1000);
         
-        // Callback für Datenaktualisierung
-        mqttManager.onDataUpdate = []() {
-          dataManager.updateFromMqtt(mqttManager);
-          
-          // Wenn wir in einer Detailansicht sind, aktualisieren
-          if (inDetailView) {
-            viewManager.updateView(); // Verwende die neue updateView-Methode für partielles Neuzeichnen
-          }
-        };
+        // ioBroker-Verbindung
+        tft.println("Verbinde mit ioBroker...");
+        ioBrokerConnected = ioBrokerManager.begin();
         
-      } else {
-        tft.println("MQTT-Verbindung fehlgeschlagen");
-        tft.println("Verwende Simulationsdaten...");
-        
-        // Simulationsmodus beibehalten
-        dataManager.setSimulationMode(true);
-      }
-      
-      // Verzögerung zwischen MQTT-Verbindungen
-      delay(2000);
-      
-      // Zusätzlich ioBroker MQTT verbinden - NUR, wenn WLAN verbunden ist
-      tft.println("\nVerbinde mit ioBroker..."); 
-      
-      // Für ioBroker die Standard-Anmeldedaten verwenden, nicht leere Strings
-      ioBrokerConnected = ioBrokerManager.begin();
-      
-      if (ioBrokerConnected) {
-        tft.println("ioBroker verbunden!");
-        DEBUG_PRINTLN("ioBroker erfolgreich verbunden");
-      } else {
-        tft.println("ioBroker-Verbindung fehlgeschlagen!");
-        DEBUG_PRINTLN("ioBroker-Verbindung konnte nicht hergestellt werden");
+        if (ioBrokerConnected) {
+          tft.println("ioBroker verbunden!");
+          DEBUG_INFO("ioBroker erfolgreich verbunden");
+        } else {
+          tft.println("ioBroker-Verbindung fehlgeschlagen!");
+          DEBUG_WARNING("ioBroker-Verbindung konnte nicht hergestellt werden");
+        }
       }
     } else {
+      // WLAN-Verbindung fehlgeschlagen
+      wifiConnected = false;
       tft.println("\nWLAN-Verbindung fehlgeschlagen!");
       tft.println("Verwende Simulationsdaten...");
+      DEBUG_WARNING("WLAN-Verbindung fehlgeschlagen");
       
       // Simulationsmodus beibehalten
       dataManager.setSimulationMode(true);
     }
-  } else {
-    // Keine Konfiguration gefunden
-    tft.setTextColor(TFT_YELLOW, BACKGROUND);
-    tft.setCursor(40, 160);
-    tft.println("Keine Konfiguration gefunden!");
-    tft.println("Verwende Standardwerte...");
-    
-    // WLAN-Verbindung mit Standard-Werten aufbauen
-    wifiConnected = setup_wifi(DEFAULT_WIFI_SSID, DEFAULT_WIFI_PASS, 10000);
-    DEBUG_PRINT("WLAN-Status: ");
-    DEBUG_PRINTLN(WiFi.status());
-    // Simulationsmodus beibehalten
-    dataManager.setSimulationMode(true);
   }
-
-  delay(2000); // Kurz anzeigen
   
-  // Menüsystem aus JSON laden
+  // Kurze Verzögerung
+  delay(2000);
+  
+  // Menüsystem laden
+  tft.println("Lade Menüsystem...");
   if (menuSystem.loadFromJson("/menu.json")) {
-    tft.setCursor(80, tft.getCursorY() + 10);
-    tft.println("Menü geladen!");
+    tft.println("Menü erfolgreich geladen");
   } else {
-    tft.setCursor(80, tft.getCursorY() + 10);
-    tft.println("Fehler beim Laden des Menüs!");
+    tft.println("Fehler beim Laden des Menüs");
+    DEBUG_ERROR("Menüsystem konnte nicht geladen werden");
   }
   
+  // Kurze Verzögerung
   delay(1000);
   
   // Aktuelle Zeit für das Display-Timeout
@@ -256,19 +381,42 @@ WiFi.setSleep(false);
   // Menü zeichnen
   menuSystem.drawMenu(true);
   
-  // Simuliere Datenaktualisierung falls nötig
+  // Datenaktualisierung starten
   dataManager.update();
   
+  // Setup abgeschlossen
   DEBUG_PRINTLN("Setup abgeschlossen.");
-  DEBUG_PRINTLN("WLAN-Status: " + String(wifiConnected ? "Verbunden" : "Nicht verbunden"));
-  DEBUG_PRINTLN("MQTT-Status: " + String(mqttConnected ? "Verbunden" : "Nicht verbunden"));
-  DEBUG_PRINTLN("ioBroker-Status: " + String(ioBrokerConnected ? "Verbunden" : "Nicht verbunden"));
-  // System-Diagnose vor dem WLAN-Verbindungsversuch
-  DEBUG_PRINTLN("Systemdiagnose vor WLAN-Verbindung:");
+  DEBUG_PRINTLN("WLAN: " + String(wifiConnected ? "Verbunden" : "Nicht verbunden"));
+  DEBUG_PRINTLN("MQTT: " + String(mqttConnected ? "Verbunden" : "Nicht verbunden"));
+  DEBUG_PRINTLN("ioBroker: " + String(ioBrokerConnected ? "Verbunden" : "Nicht verbunden"));
+  DEBUG_PRINTLN("Simulationsmodus: " + String(dataManager.isSimulationMode() ? "Aktiv" : "Inaktiv"));
+  
+  // System-Diagnose
   printSystemDiagnostics();
 }
 
 void loop() {
+   // Access Point Modus
+  if (apModeActive) {
+    // Im AP-Modus nur das Nötigste ausführen
+    handleWebServer(); // Enthält jetzt DNS-Server-Handling
+    
+    // Touch-Events im AP-Modus nur für Display-Wake-Up
+    if (!displaySleepMode && touch.tirqTouched() && touch.touched()) {
+      lastUserInteractionTime = millis();
+    }
+    
+    // Display-Timeout prüfen
+    checkDisplaySleep();
+    
+    return; // Restliche Funktionen im AP-Modus überspringen
+  }
+    // Prüfen, ob ein Neustart angefordert wurde
+  if (restartFlag && millis() > restartTime) {
+    DEBUG_INFO("Führe angeforderten Neustart durch...");
+    ESP.restart();
+  }
+
   // OTA-Update Handling (wenn aktiviert)
   if (wifiConnected) {
     ArduinoOTA.handle();
@@ -587,7 +735,7 @@ void setupOTA() {
   ArduinoOTA.setHostname(hostname.c_str());
   
   // Optionales Passwort
-  // ArduinoOTA.setPassword("admin");
+  ArduinoOTA.setPassword("admin");
   
   ArduinoOTA.onStart([]() {
     otaInProgress = true;
@@ -736,6 +884,7 @@ void checkDisplaySleep() {
   }
 }
 
+// Display aus der Konfiguration initialisieren
 bool initializeDisplayFromConfig() {
   JsonDocument config;
   bool displayInverted = false;
@@ -743,21 +892,11 @@ bool initializeDisplayFromConfig() {
   if (configManager.loadJsonConfig("/config.json", config)) {
     if (config["display"].is<JsonObject>()) {
       // Lese Display-Typ
-      String displayType = config["display"]["type"].as<String>();
-      if (displayType == "usb_c") {
-        displayInverted = true;
-      } else {
-        // Alternativ direkt aus dem inverted-Flag lesen
+      if (config["display"]["inverted"].is<bool>()) {
         displayInverted = config["display"]["inverted"].as<bool>();
       }
       
-      // Optional: Helligkeit auslesen und anwenden
-      if (config["display"]["brightness"].is<int>()) {
-        displayBrightness = config["display"]["brightness"].as<int>();
-        // Hier Helligkeit anwenden, falls dein Display dies unterstützt
-      }
-      
-      // Optional: Timeout auslesen
+      // Optional: Timeout laden
       if (config["display"]["timeout"].is<int>()) {
         displayTimeout = config["display"]["timeout"].as<int>();
       }
@@ -769,15 +908,13 @@ bool initializeDisplayFromConfig() {
   tft.setRotation(1);
   
   if (displayInverted) {
-    DEBUG_PRINTLN("Display-Farben werden invertiert (USB-C Variante)");
     tft.invertDisplay(true);
   } else {
-    DEBUG_PRINTLN("Display-Farben normal (Micro-USB Variante)");
     tft.invertDisplay(false);
   }
   
-  tft.fillScreen(BACKGROUND);
-  tft.setTextColor(TEXT_COLOR, BACKGROUND);
+  tft.fillScreen(TFT_BLACK);
+  tft.setTextColor(TFT_WHITE, TFT_BLACK);
   
   return true;
 }
@@ -879,6 +1016,7 @@ void drawStartLogo() {
   
   delay(2000);  // Logo 2 Sekunden anzeigen
 }
+
 
 void printSystemDiagnostics() {
   DEBUG_PRINTLN("=== System-Diagnose ===");

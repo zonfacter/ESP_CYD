@@ -1135,13 +1135,33 @@ void ViewManager::drawStatistics() {
   
   // Prüfe, ob historische Daten verfügbar sind
   int historyCount = dataManager.getHistoryCount();
+   // Hinzufügen einer Option zum Anzeigen längerfristiger Trends
+  tft.setCursor(20, tft.getCursorY() + 15);
+  tft.setTextColor(TFT_WHITE, BACKGROUND);
+  tft.println("Langzeit-Trends:");
   
+  // Maximale PV-Leistung des Tages anzeigen
+  float maxPv = dataManager.getMaxValueForToday("pv");
+  tft.setCursor(20, tft.getCursorY() + 5);
+  tft.print("Max. PV heute: ");
+  tft.print(maxPv, 0);
+  tft.println(" W");
+  
+  // Durchschnittliche Autarkie anzeigen
+  float avgAutarky = dataManager.getAvgValueForToday("autarky");
+  tft.setCursor(20, tft.getCursorY() + 5);
+  tft.print("Durchschn. Autarkie heute: ");
+  tft.print(avgAutarky, 1);
+  tft.println(" %");
+
   if (historyCount <= 0) {
     tft.setCursor(20, 80);
     tft.println("Keine historischen Daten verfügbar.");
     tft.setCursor(20, 100);
     tft.println("Daten werden im Laufe der Zeit gesammelt.");
     return;
+  
+
   }
   
   // Abrufen der historischen Daten
@@ -1266,7 +1286,6 @@ void ViewManager::drawStatistics() {
   float avgPvPower = 0;
   float avgLoadPower = 0;
   float avgBatteryPower = 0;
-  float avgAutarky = 0;
   
   for (int i = 0; i < historyCount; i++) {
     if (history[i].timestamp > 0) {

@@ -53,14 +53,15 @@ private:
   unsigned long lastCacheUpdate = 0;
   
   // Historische Daten speichern
-  static const int MAX_HISTORY_ENTRIES = 24; // 1 Eintrag pro Stunde für einen Tag
+  static const int MAX_HISTORY_ENTRIES = 48; // 1 Eintrag pro Stunde für einen Tag
   HistoricalData history[MAX_HISTORY_ENTRIES];
   int historyIndex = 0;
   
   // Cache-Funktionen
   bool saveDataToCache();
   bool loadDataFromCache();
-  
+
+  bool checkStorageSpace();  
 public:
   DataManager();
   
@@ -75,10 +76,15 @@ public:
   SolarData& getData() { return data; }
   
   // Historische Daten
-  void addHistoricalDataPoint();
+  bool addHistoricalDataPoint();
   HistoricalData* getHistoricalData() { return history; }
   int getHistoryCount() const;
-  
+  // Neue Funktionen für erweiterte Historienverwaltung
+  bool loadHistoricalDataFromStorage();
+  String getDayString();
+  float getMaxValueForToday(const String& field);
+  float getAvgValueForToday(const String& field);
+
   // Simulationsmodus ein/ausschalten
   void setSimulationMode(bool mode) { simulationMode = mode; }
   bool isSimulationMode() { return simulationMode; }

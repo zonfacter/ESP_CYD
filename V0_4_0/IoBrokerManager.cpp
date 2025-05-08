@@ -1372,6 +1372,8 @@ bool IoBrokerManager::closeRolladen(const String &rolladenId) {
   return setRolladenTargetPosition(rolladenId, 100);
 }
 
+
+
 // Szenen-Methode: Alle Rollläden auf die gleiche Position setzen
 bool IoBrokerManager::setAllRolladenPositions(int position) {
   bool success = true;

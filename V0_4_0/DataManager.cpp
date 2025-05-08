@@ -12,6 +12,8 @@ DataManager::DataManager() {
   // Konstruktor
   // Versuche, Daten aus dem Cache zu laden
   loadDataFromCache();
+  // Versuche, historische Daten zu laden
+  loadHistoricalDataFromStorage();
 }
 
 void DataManager::updateFromMqtt(MqttManager& mqttManager) {
@@ -169,14 +171,309 @@ bool DataManager::checkAndLoadCachedData() {
   return false; // Im Online-Modus nicht notwendig
 }
 
-void DataManager::addHistoricalDataPoint() {
+bool DataManager::addHistoricalDataPoint() {
   // Füge aktuellen Datenpunkt zur Historie hinzu
   history[historyIndex] = HistoricalData(millis(), data);
   
   // Index für den nächsten Eintrag
   historyIndex = (historyIndex + 1) % MAX_HISTORY_ENTRIES;
   
-  DEBUG_PRINTLN("Historischer Datenpunkt hinzugefügt");
+  DEBUG_INFO("Historischer Datenpunkt hinzugefügt");
+  
+  // Persistente Speicherung in SPIFFS
+  // Begrenze Schreibvorgänge, um Flash-Verschleiß zu minimieren (z.B. jeder 6. Datenpunkt)
+  static int persistCounter = 0;
+  persistCounter++;
+  
+  if (persistCounter >= 6) {  // Jeder 6. Datenpunkt wird persistent gespeichert
+    persistCounter = 0;
+    
+    // Prüfe und manage den Speicherplatz
+    checkStorageSpace();
+    
+    // Sammle alle aktuellen historischen Daten
+    JsonDocument historyDoc;
+    historyDoc["timestamp"] = millis();
+    historyDoc["count"] = getHistoryCount();
+    
+    // Erstelle Array für die Datenpunkte
+    JsonArray dataPoints = historyDoc["points"].to<JsonArray>();
+
+    // Füge alle gültigen Datenpunkte hinzu
+    for (int i = 0; i < MAX_HISTORY_ENTRIES; i++) {
+      if (history[i].timestamp > 0) {
+        JsonObject point = dataPoints.add<JsonObject>();
+        point["ts"] = history[i].timestamp;
+        point["soc"] = history[i].data.batterySOC;
+        point["pv"] = history[i].data.pvPower;
+        point["grid"] = history[i].data.gridPower;
+        point["load"] = history[i].data.loadPower;
+        point["batt"] = history[i].data.batteryPower;
+        point["yield"] = history[i].data.dailyYield;
+        point["volt"] = history[i].data.batteryVoltage;
+        point["auto"] = history[i].data.autarky;
+      }
+    }
+    
+    // Als JSON in SPIFFS speichern
+    if (!SPIFFS.begin(false)) {
+      DEBUG_ERROR("SPIFFS konnte nicht initialisiert werden beim Speichern der Historie!");
+      return false;
+    }
+    
+    // Rotierendes Logging - mehrere Dateien verwenden, um Datenverlust zu vermeiden
+    static int fileIndex = 0;
+    fileIndex = (fileIndex + 1) % 3;  // 3 Dateien rotierend verwenden
+    String filename = "/history_data_" + String(fileIndex) + ".json";
+    
+    File file = SPIFFS.open(filename, "w");
+    if (!file) {
+      DEBUG_ERROR("Fehler beim Öffnen der Historien-Datei zum Schreiben");
+      return false;
+    }
+    
+    // JSON in die Datei schreiben
+    if (serializeJson(historyDoc, file) == 0) {
+      DEBUG_ERROR("Fehler beim Schreiben der Historien-Daten");
+      file.close();
+      return false;
+    }
+    
+    file.close();
+    DEBUG_INFO("Historische Daten erfolgreich gespeichert in " + filename);
+    
+    // Täglichen Verlaufsdatenpunkt speichern (mit Datum als Dateiname)
+    // Verwende einen eigenen Timer, damit dies nur einmal täglich passiert
+    static unsigned long lastDailySave = 0;
+    if (millis() - lastDailySave > 86400000) { // 24 Stunden in ms
+      lastDailySave = millis();
+      
+      // Aktuelle Daten für Tagesverlauf speichern
+      JsonDocument dailyDoc;
+      
+      // Füge für den täglichen Verlauf relevante Daten hinzu
+      dailyDoc["date"] = getDayString(); // Funktion, die aktuelles Datum als String zurückgibt
+      dailyDoc["daily_yield"] = data.dailyYield;
+      dailyDoc["max_pv"] = getMaxValueForToday("pv");  // Hilfsfunktion implementieren
+      dailyDoc["avg_soc"] = getAvgValueForToday("soc"); // Hilfsfunktion implementieren
+      dailyDoc["avg_autarky"] = getAvgValueForToday("autarky"); // Hilfsfunktion implementieren
+      
+      // Speichere tägliche Zusammenfassung
+      String dailyFilename = "/daily_" + getDayString() + ".json";
+      File dailyFile = SPIFFS.open(dailyFilename, "w");
+      if (dailyFile) {
+        serializeJson(dailyDoc, dailyFile);
+        dailyFile.close();
+        DEBUG_INFO("Täglicher Verlaufsdatenpunkt gespeichert in " + dailyFilename);
+      }
+    }
+    
+    return true;
+  }
+  
+  return true; // Erfolgreich (auch wenn kein Schreiben stattfand)
+}
+
+// Hilfsfunktion, um das aktuelle Datum als String zu erhalten
+String DataManager::getDayString() {
+  // In einer realen Anwendung würde hier ein RTC oder NTP verwendet
+  // Für diese Beispielimplementierung verwenden wir einen einfachen Zähler
+  static int dayCounter = 0;
+  unsigned long uptime = millis() / 1000 / 60 / 60 / 24; // Tage seit Start
+  
+  if (uptime > dayCounter) {
+    dayCounter = uptime;
+  }
+  
+  return String(dayCounter);
+}
+
+// Speicherplatz-Überwachung
+bool DataManager::checkStorageSpace() {
+  if (!SPIFFS.begin(false)) {
+    DEBUG_ERROR("SPIFFS konnte nicht für Speicherprüfung initialisiert werden!");
+    return false;
+  }
+  
+  size_t totalBytes = SPIFFS.totalBytes();
+  size_t usedBytes = SPIFFS.usedBytes();
+  float usedPercentage = (float)usedBytes / totalBytes * 100;
+  
+  DEBUG_INFO("SPIFFS Speichernutzung: " + String(usedBytes) + " von " + String(totalBytes) + 
+             " Bytes (" + String(usedPercentage) + "%)");
+  
+  // Wenn der Speicher zu voll ist (z.B. > 90%), alte Dateien löschen
+  if (usedPercentage > 90) {
+    DEBUG_WARNING("SPIFFS fast voll, lösche alte tägliche Dateien...");
+    
+    // Suche nach der ältesten täglichen Datei und lösche sie
+    File root = SPIFFS.open("/");
+    File file = root.openNextFile();
+    String oldestFile = "";
+    unsigned long oldestTime = millis();
+    
+    while (file) {
+      String fileName = file.name();
+      if (fileName.startsWith("/daily_")) {
+        // Extrahiere den Zeitstempel oder Zähler aus dem Dateinamen
+        int dayValue = fileName.substring(7, fileName.lastIndexOf(".")).toInt();
+        if (dayValue < oldestTime) {
+          oldestFile = fileName;
+          oldestTime = dayValue;
+        }
+      }
+      file = root.openNextFile();
+    }
+    
+    if (oldestFile.length() > 0) {
+      DEBUG_WARNING("Lösche älteste tägliche Datei: " + oldestFile);
+      SPIFFS.remove(oldestFile);
+      return true;
+    }
+  }
+  
+  return true;
+}
+
+// Hilfsfunktion zur Ermittlung des Maximalwerts eines bestimmten Datenpunkts
+float DataManager::getMaxValueForToday(const String& field) {
+  float maxValue = 0.0f;
+  unsigned long dayStart = (millis() / 86400000) * 86400000; // Beginn des aktuellen Tages
+  
+  for (int i = 0; i < MAX_HISTORY_ENTRIES; i++) {
+    if (history[i].timestamp > dayStart) {
+      float value = 0.0f;
+      
+      // Wert basierend auf dem Feldnamen auswählen
+      if (field == "pv") {
+        value = history[i].data.pvPower;
+      } else if (field == "load") {
+        value = history[i].data.loadPower;
+      } else if (field == "autarky") {
+        value = history[i].data.autarky;
+      } else if (field == "grid") {
+        value = history[i].data.gridPower;
+      } else if (field == "battery") {
+        value = history[i].data.batteryPower;
+      } else if (field == "voltage") {
+        value = history[i].data.batteryVoltage;
+      } else if (field == "yield") {
+        value = history[i].data.dailyYield;
+      } // ... weitere Felder
+      
+      if (value > maxValue) {
+        maxValue = value;
+      }
+    }
+  }
+  
+  return maxValue;
+}
+
+// Hilfsfunktion zur Ermittlung des Durchschnittswerts eines bestimmten Datenpunkts
+float DataManager::getAvgValueForToday(const String& field) {
+  float sum = 0.0f;
+  int count = 0;
+  unsigned long dayStart = (millis() / 86400000) * 86400000; // Beginn des aktuellen Tages
+  
+  for (int i = 0; i < MAX_HISTORY_ENTRIES; i++) {
+    if (history[i].timestamp > dayStart) {
+      float value = 0.0f;
+      
+      // Wert basierend auf dem Feldnamen auswählen
+      if (field == "soc") {
+        value = history[i].data.batterySOC;
+      } else if (field == "autarky") {
+        value = history[i].data.autarky;
+      } else if (field == "pv") {
+        value = history[i].data.pvPower;
+      } else if (field == "load") {
+        value = history[i].data.loadPower;
+      } else if (field == "autarky") {
+        value = history[i].data.autarky;
+      } else if (field == "grid") {
+        value = history[i].data.gridPower;
+      } else if (field == "battery") {
+        value = history[i].data.batteryPower;
+      } else if (field == "voltage") {
+        value = history[i].data.batteryVoltage;
+      } else if (field == "yield") {
+        value = history[i].data.dailyYield;
+      }
+      
+      sum += value;
+      count++;
+    }
+  }
+  
+  return (count > 0) ? (sum / count) : 0.0f;
+}
+
+// Lade die historischen Daten aus dem SPIFFS beim Start
+bool DataManager::loadHistoricalDataFromStorage() {
+  if (!SPIFFS.begin(false)) {
+    DEBUG_PRINTLN("SPIFFS konnte nicht initialisiert werden beim Laden der Historie!");
+    return false;
+  }
+  
+  bool anyFileLoaded = false;
+  
+  // Versuche, die neueste der rotierenden Dateien zu laden
+  for (int i = 0; i < 3; i++) {
+    String filename = "/history_data_" + String(i) + ".json";
+    
+    if (SPIFFS.exists(filename)) {
+      File file = SPIFFS.open(filename, "r");
+      if (!file) {
+        DEBUG_PRINTLN("Fehler beim Öffnen der Historien-Datei zum Lesen: " + filename);
+        continue;
+      }
+      
+      // JSON deserialisieren
+      JsonDocument historyDoc;
+      DeserializationError error = deserializeJson(historyDoc, file);
+      file.close();
+      
+      if (error) {
+        DEBUG_PRINT("JSON Parsing Fehler beim Laden der Historie: ");
+        DEBUG_PRINTLN(error.c_str());
+        continue;
+      }
+      
+      // Daten in die Historie laden
+      historyIndex = 0; // Von vorne beginnen
+      JsonArray dataPoints = historyDoc["points"];
+      
+      for (JsonObject point : dataPoints) {
+        if (historyIndex < MAX_HISTORY_ENTRIES) {
+          history[historyIndex].timestamp = point["ts"];
+          
+          // Lade alle Felder der SolarData-Struktur
+          history[historyIndex].data.batterySOC = point["soc"];
+          history[historyIndex].data.pvPower = point["pv"];
+          history[historyIndex].data.gridPower = point["grid"];
+          history[historyIndex].data.loadPower = point["load"];
+          history[historyIndex].data.batteryPower = point["batt"];
+          history[historyIndex].data.dailyYield = point["yield"];
+          history[historyIndex].data.batteryVoltage = point["volt"];
+          history[historyIndex].data.autarky = point["auto"];
+          
+          historyIndex++;
+        }
+      }
+      
+      DEBUG_PRINT("Historische Daten geladen aus ");
+      DEBUG_PRINT(filename);
+      DEBUG_PRINT(": ");
+      DEBUG_PRINT(historyIndex);
+      DEBUG_PRINTLN(" Datenpunkte");
+      
+      anyFileLoaded = true;
+      break; // Lade nur die erste gefundene Datei
+    }
+  }
+  
+  return anyFileLoaded;
 }
 
 int DataManager::getHistoryCount() const {

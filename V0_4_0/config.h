@@ -16,11 +16,33 @@
 
 
 // Debug-Makros definieren
+enum DebugLevel {
+  DEBUG_NONE = 0,
+  DEBUG_ERROR = 1,
+  DEBUG_WARNING = 2,
+  DEBUG_INFO = 3,
+  DEBUG_VERBOSE = 4
+};
+
+#define CURRENT_DEBUG_LEVEL DEBUG_INFO
+
 #if DEBUG_ENABLED
-  #define DEBUG_PRINT(...) DEBUG_SERIAL.print(__VA_ARGS__)
-  #define DEBUG_PRINTLN(...) DEBUG_SERIAL.println(__VA_ARGS__)
-  #define DEBUG_PRINTF(...) DEBUG_SERIAL.printf(__VA_ARGS__)
+  #define DEBUG_ERROR(...) if (CURRENT_DEBUG_LEVEL >= DEBUG_ERROR) { DEBUG_SERIAL.print("[ERROR] "); DEBUG_SERIAL.println(__VA_ARGS__); }
+  #define DEBUG_WARNING(...) if (CURRENT_DEBUG_LEVEL >= DEBUG_WARNING) { DEBUG_SERIAL.print("[WARN] "); DEBUG_SERIAL.println(__VA_ARGS__); }
+  #define DEBUG_INFO(...) if (CURRENT_DEBUG_LEVEL >= DEBUG_INFO) { DEBUG_SERIAL.print("[INFO] "); DEBUG_SERIAL.println(__VA_ARGS__); }
+  #define DEBUG_VERBOSE(...) if (CURRENT_DEBUG_LEVEL >= DEBUG_VERBOSE) { DEBUG_SERIAL.print("[VERB] "); DEBUG_SERIAL.println(__VA_ARGS__); }
+  
+  // Kompatibilitätsschicht für alte Debug-Makros
+  #define DEBUG_PRINT(...) if (CURRENT_DEBUG_LEVEL >= DEBUG_INFO) { DEBUG_SERIAL.print(__VA_ARGS__); }
+  #define DEBUG_PRINTLN(...) if (CURRENT_DEBUG_LEVEL >= DEBUG_INFO) { DEBUG_SERIAL.println(__VA_ARGS__); }
+  #define DEBUG_PRINTF(...) if (CURRENT_DEBUG_LEVEL >= DEBUG_INFO) { DEBUG_SERIAL.printf(__VA_ARGS__); }
 #else
+  #define DEBUG_ERROR(...)
+  #define DEBUG_WARNING(...)
+  #define DEBUG_INFO(...)
+  #define DEBUG_VERBOSE(...)
+  
+  // Kompatibilitätsschicht für alte Debug-Makros
   #define DEBUG_PRINT(...)
   #define DEBUG_PRINTLN(...)
   #define DEBUG_PRINTF(...)
