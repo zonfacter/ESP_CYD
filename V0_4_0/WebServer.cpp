@@ -946,87 +946,87 @@ void startAccessPoint() {
 
 // Konfiguriert den Webserver für Access Point Modus
 void setupWebServerAP() {
-  DEBUG_INFO("Konfiguriere WebServer für AP-Modus...");
-  
-  // Hauptseite für WLAN-Konfiguration
-server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
-  DEBUG_INFO("GET / Anfrage empfangen");
-  
-  if (!apModeActive) {
-    request->redirect("/");
-    return;
-  }
-  
-  String html = HTML_HEADER;
-  
-  html += "<h1>ESP32 Solar Monitor - WLAN-Konfiguration</h1>";
-  html += "<p>Bitte wähle ein WLAN-Netzwerk aus und gib das Passwort ein.</p>";
-  
-  // Zwei-Spalten-Layout
-  html += "<div style='display: flex; flex-wrap: wrap; gap: 20px;'>";
-  
-  // Linke Spalte: Netzwerke
-  html += "<div style='flex: 1; min-width: 280px;'>";
-  html += "<h3>Verfügbare Netzwerke:</h3>";
-  html += "<div style='max-height: 300px; overflow-y: auto; border: 1px solid #ddd; border-radius: 4px;'>";
-  
-  int n = WiFi.scanNetworks();
-  if (n == 0) {
-    html += "<p style='padding: 10px;'>Keine Netzwerke gefunden</p>";
-  } else {
-    for (int i = 0; i < n; ++i) {
-      String ssid = WiFi.SSID(i);
-      int rssi = WiFi.RSSI(i);
-      String quality = "";
-      
-      // Signalstärke visualisieren
-      if (rssi > -50) quality = "●●●●"; // Sehr gut
-      else if (rssi > -65) quality = "●●●○"; // Gut
-      else if (rssi > -75) quality = "●●○○"; // Mittel
-      else quality = "●○○○"; // Schwach
-      
-      String encrypted = (WiFi.encryptionType(i) == WIFI_AUTH_OPEN) ? "" : " 🔒";
-      
-      html += "<div onclick='selectNetwork(\"" + ssid + "\")' style='padding: 10px; cursor: pointer; border-bottom: 1px solid #eee;'>";
-      html += "<strong>" + ssid + "</strong> " + encrypted + "<br>";
-      html += "<span style='color: #3498db;'>" + quality + "</span> (" + rssi + " dBm)";
-      html += "</div>";
+    DEBUG_INFO("Konfiguriere WebServer für AP-Modus...");
+    
+    // Hauptseite für WLAN-Konfiguration
+  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
+    DEBUG_INFO("GET / Anfrage empfangen");
+    
+    if (!apModeActive) {
+      request->redirect("/");
+      return;
     }
-  }
-  html += "</div>"; // Ende Netzwerkliste
-  html += "</div>"; // Ende linke Spalte
-  
-  // Rechte Spalte: Formular
-  html += "<div style='flex: 1; min-width: 280px;'>";
-  html += "<h3>WLAN-Einstellungen:</h3>";
-  html += "<form method='POST' action='/save-wifi' style='background-color: #f8f9fa; padding: 15px; border-radius: 4px;'>";
-  html += "<div style='margin-bottom: 15px;'>";
-  html += "<label for='ssid' style='display: block; margin-bottom: 5px; font-weight: bold;'>WLAN-Name (SSID):</label>";
-  html += "<input type='text' id='ssid' name='ssid' required style='width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;'>";
-  html += "</div>";
-  html += "<div style='margin-bottom: 15px;'>";
-  html += "<label for='password' style='display: block; margin-bottom: 5px; font-weight: bold;'>WLAN-Passwort:</label>";
-  html += "<input type='password' id='password' name='password' style='width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;'>";
-  html += "</div>";
-  html += "<div style='margin-top: 20px;'>";
-  html += "<input type='submit' value='Speichern und verbinden' style='background-color: #3498db; color: white; padding: 10px 16px; border: none; border-radius: 4px; cursor: pointer; width: 100%;'>";
-  html += "</div>";
-  html += "</form>";
-  html += "</div>"; // Ende rechte Spalte
-  
-  html += "</div>"; // Ende Flex-Container
-  
-  // JavaScript unverändert
-  html += "<script>";
-  html += "function selectNetwork(ssid) {";
-  html += "  document.getElementById('ssid').value = ssid;";
-  html += "  document.getElementById('password').focus();"; // Fokus auf Passwortfeld setzen
-  html += "}";
-  html += "</script>";
-  
-  html += getHtmlFooter();
-  request->send(200, "text/html", html);
-  DEBUG_INFO("GET / Anfrage beantwortet");
+    
+    String html = HTML_HEADER;
+    
+    html += "<h1>ESP32 Solar Monitor - WLAN-Konfiguration</h1>";
+    html += "<p>Bitte wähle ein WLAN-Netzwerk aus und gib das Passwort ein.</p>";
+    
+    // Zwei-Spalten-Layout
+    html += "<div style='display: flex; flex-wrap: wrap; gap: 20px;'>";
+    
+    // Linke Spalte: Netzwerke
+    html += "<div style='flex: 1; min-width: 280px;'>";
+    html += "<h3>Verfügbare Netzwerke:</h3>";
+    html += "<div style='max-height: 300px; overflow-y: auto; border: 1px solid #ddd; border-radius: 4px;'>";
+    
+    int n = WiFi.scanNetworks();
+    if (n == 0) {
+      html += "<p style='padding: 10px;'>Keine Netzwerke gefunden</p>";
+    } else {
+      for (int i = 0; i < n; ++i) {
+        String ssid = WiFi.SSID(i);
+        int rssi = WiFi.RSSI(i);
+        String quality = "";
+        
+        // Signalstärke visualisieren
+        if (rssi > -50) quality = "●●●●"; // Sehr gut
+        else if (rssi > -65) quality = "●●●○"; // Gut
+        else if (rssi > -75) quality = "●●○○"; // Mittel
+        else quality = "●○○○"; // Schwach
+        
+        String encrypted = (WiFi.encryptionType(i) == WIFI_AUTH_OPEN) ? "" : " 🔒";
+        
+        html += "<div onclick='selectNetwork(\"" + ssid + "\")' style='padding: 10px; cursor: pointer; border-bottom: 1px solid #eee;'>";
+        html += "<strong>" + ssid + "</strong> " + encrypted + "<br>";
+        html += "<span style='color: #3498db;'>" + quality + "</span> (" + rssi + " dBm)";
+        html += "</div>";
+      }
+    }
+    html += "</div>"; // Ende Netzwerkliste
+    html += "</div>"; // Ende linke Spalte
+    
+    // Rechte Spalte: Formular
+    html += "<div style='flex: 1; min-width: 280px;'>";
+    html += "<h3>WLAN-Einstellungen:</h3>";
+    html += "<form method='POST' action='/save-wifi' style='background-color: #f8f9fa; padding: 15px; border-radius: 4px;'>";
+    html += "<div style='margin-bottom: 15px;'>";
+    html += "<label for='ssid' style='display: block; margin-bottom: 5px; font-weight: bold;'>WLAN-Name (SSID):</label>";
+    html += "<input type='text' id='ssid' name='ssid' required style='width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;'>";
+    html += "</div>";
+    html += "<div style='margin-bottom: 15px;'>";
+    html += "<label for='password' style='display: block; margin-bottom: 5px; font-weight: bold;'>WLAN-Passwort:</label>";
+    html += "<input type='password' id='password' name='password' style='width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;'>";
+    html += "</div>";
+    html += "<div style='margin-top: 20px;'>";
+    html += "<input type='submit' value='Speichern und verbinden' style='background-color: #3498db; color: white; padding: 10px 16px; border: none; border-radius: 4px; cursor: pointer; width: 100%;'>";
+    html += "</div>";
+    html += "</form>";
+    html += "</div>"; // Ende rechte Spalte
+    
+    html += "</div>"; // Ende Flex-Container
+    
+    // JavaScript unverändert
+    html += "<script>";
+    html += "function selectNetwork(ssid) {";
+    html += "  document.getElementById('ssid').value = ssid;";
+    html += "  document.getElementById('password').focus();"; // Fokus auf Passwortfeld setzen
+    html += "}";
+    html += "</script>";
+    
+    html += getHtmlFooter();
+    request->send(200, "text/html", html);
+    DEBUG_INFO("GET / Anfrage beantwortet");
 });
 
   // Im AP-Modus alle unbekannten Anfragen zur Konfigurationsseite umleiten (Captive Portal)
@@ -1057,6 +1057,8 @@ server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
   }
 }
 
+
+
 // Eigenständige Funktion für den WLAN-Speicher-Handler
 void setupWifiSaveHandler() {
   server.on("/save-wifi", HTTP_POST, [](AsyncWebServerRequest *request) {
@@ -1077,8 +1079,25 @@ void setupWifiSaveHandler() {
     JsonDocument config;
     
     // Bestehende Konfiguration laden, falls vorhanden
-    if (configManager.loadJsonConfig("/config.json", config)) {
-      DEBUG_INFO("Bestehende Konfiguration geladen");
+    if (!SPIFFS.begin(false)) {
+      DEBUG_ERROR("SPIFFS konnte nicht initialisiert werden beim Speichern der WLAN-Konfiguration!");
+      request->send(500, "text/plain", "Interner Serverfehler: SPIFFS-Initialisierung fehlgeschlagen");
+      return;
+    }
+    
+    // Bestehende Konfiguration laden oder neue erstellen
+    bool configExists = SPIFFS.exists("/config.json");
+    if (configExists) {
+      bool loadSuccess = configManager.loadJsonConfig("/config.json", config);
+      DEBUG_INFO("Bestehende Konfiguration laden: " + String(loadSuccess ? "erfolgreich" : "fehlgeschlagen"));
+      
+      if (!loadSuccess) {
+        // Wenn das Laden fehlschlägt, erstellen wir eine neue Konfiguration
+        config = JsonDocument();
+      }
+    } else {
+      DEBUG_INFO("Keine bestehende Konfiguration gefunden, erstelle neue");
+      config = JsonDocument();
     }
     
     // Sicherstellen, dass wlan-Objekt existiert
@@ -1091,8 +1110,16 @@ void setupWifiSaveHandler() {
     config["wlan"]["ssid"] = ssid;
     config["wlan"]["password"] = password;
     
-    // Konfiguration speichern
+    // Konfiguration speichern und Ergebnis mehrfach loggen
     bool saved = configManager.saveJsonConfig("/config.json", config);
+    
+    // Überprüfen, ob die Datei tatsächlich existiert und Inhalt hat
+    bool fileExists = SPIFFS.exists("/config.json");
+    File checkFile = SPIFFS.open("/config.json", "r");
+    size_t fileSize = checkFile ? checkFile.size() : 0;
+    if (checkFile) checkFile.close();
+    
+    DEBUG_INFO("Konfigurationsspeicherung: save=" + String(saved) + ", exists=" + String(fileExists) + ", size=" + String(fileSize));
     
     String html = HTML_HEADER;
     
@@ -1113,7 +1140,9 @@ void setupWifiSaveHandler() {
       html += "<p>Bitte warte einen Moment...</p>";
       html += "<script>setTimeout(function() { window.location.href = '/'; }, 20000);</script>";
     } else {
-      html += "<p>Fehler beim Speichern der Konfiguration. Bitte versuche es erneut.</p>";
+      html += "<p>Fehler beim Speichern der Konfiguration. Details:</p>";
+      html += "<p>Datei existiert: " + String(fileExists ? "Ja" : "Nein") + "</p>";
+      html += "<p>Dateigröße: " + String(fileSize) + " Bytes</p>";
       html += "<p><a href='/' class='btn'>Zurück zur Konfiguration</a></p>";
     }
     
@@ -1128,6 +1157,27 @@ void setupWifiSaveHandler() {
       DEBUG_INFO("Neustart in 2 Sekunden angefordert...");
     }
   });
+}
+
+// Diese Funktion in WebServer.cpp nach setupWebServerAP() einfügen
+void printSpiffsInfo() {
+  if (!SPIFFS.begin(false)) {
+    DEBUG_ERROR("SPIFFS konnte nicht initialisiert werden!");
+    return;
+  }
+  
+  DEBUG_INFO("SPIFFS-Informationen:");
+  DEBUG_INFO("Gesamtspeicher: " + String(SPIFFS.totalBytes() / 1024) + " KB");
+  DEBUG_INFO("Verwendeter Speicher: " + String(SPIFFS.usedBytes() / 1024) + " KB");
+  DEBUG_INFO("Freier Speicher: " + String((SPIFFS.totalBytes() - SPIFFS.usedBytes()) / 1024) + " KB");
+  
+  DEBUG_INFO("Vorhandene Dateien:");
+  File root = SPIFFS.open("/");
+  File file = root.openNextFile();
+  while (file) {
+    DEBUG_INFO(" - " + String(file.name()) + " (" + String(file.size()) + " Bytes)");
+    file = root.openNextFile();
+  }
 }
 
 void handleWebServer() {

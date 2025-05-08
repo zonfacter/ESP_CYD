@@ -113,6 +113,12 @@ bool ConfigManager::saveJsonConfig(const String &filename, const JsonDocument &d
     return false;
   }
   
+  // Sicherstellen, dass SPIFFS bereit ist
+  if (!SPIFFS.begin(false)) {
+    DEBUG_PRINTLN("SPIFFS konnte nicht initialisiert werden beim Speichern!");
+    return false;
+  }
+  
   File file = SPIFFS.open(filename, "w");
   if (!file) {
     DEBUG_PRINTLN("Fehler beim Öffnen der Datei zum Schreiben");
@@ -120,16 +126,37 @@ bool ConfigManager::saveJsonConfig(const String &filename, const JsonDocument &d
   }
   
   // JSON serialisieren
-  if (serializeJson(doc, file) == 0) {
+  size_t bytesWritten = serializeJson(doc, file);
+  if (bytesWritten == 0) {
     DEBUG_PRINTLN("Fehler beim Schreiben der JSON-Daten");
     file.close();
     return false;
   }
   
+  DEBUG_PRINT("Bytes geschrieben: ");
+  DEBUG_PRINTLN(bytesWritten);
+  
+  // Explizit die Daten auf die Festplatte schreiben
+  file.flush();
   file.close();
-  DEBUG_PRINT("Konfigurationsdatei gespeichert: ");
-  DEBUG_PRINTLN(filename);
-  return true;
+  
+  // Überprüfen, ob die Datei tatsächlich existiert und Inhalt hat
+  if (SPIFFS.exists(filename)) {
+    File checkFile = SPIFFS.open(filename, "r");
+    if (checkFile && checkFile.size() > 0) {
+      DEBUG_PRINT("Konfigurationsdatei erfolgreich gespeichert: ");
+      DEBUG_PRINT(filename);
+      DEBUG_PRINT(" (");
+      DEBUG_PRINT(checkFile.size());
+      DEBUG_PRINTLN(" Bytes)");
+      checkFile.close();
+      return true;
+    }
+    if (checkFile) checkFile.close();
+  }
+  
+  DEBUG_PRINTLN("Datei wurde nicht korrekt gespeichert oder ist leer!");
+  return false;
 }
 
 void ConfigManager::createDefaultConfigs() {

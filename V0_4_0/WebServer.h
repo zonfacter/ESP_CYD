@@ -14,4 +14,5 @@
 void setupWebServer();
 void handleWebServer();
 void setupWebServerAP();
+void printSpiffsInfo();
 #endif // WEB_SERVER_H

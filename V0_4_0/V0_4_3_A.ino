@@ -116,7 +116,7 @@ extern const byte DNS_PORT;
 extern void setupWebServerAP();
 extern void startAccessPoint();
 extern void handleWebServer();
-
+extern void printSpiffsInfo();
 //=====================================================================
 // FUNKTIONSPROTOTYPEN
 //=====================================================================
@@ -246,10 +246,12 @@ void setup() {
     
     // AP-Modus initialisieren
     startAccessPoint();
-    
     DEBUG_INFO("AP-Modus wurde initialisiert, apModeActive = " + String(apModeActive ? "true" : "false"));
     DEBUG_INFO("WebServer Status: " + String(webServerRunning ? "Läuft" : "Gestoppt"));
-    
+
+    // zusätzliche Diagnose-Funktionen ein, um den Status des SPIFFS besser zu verstehen
+    printSpiffsInfo();
+
     // Simulationsmodus aktivieren
     dataManager.setSimulationMode(true);
   }
