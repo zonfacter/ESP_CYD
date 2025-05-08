@@ -335,9 +335,7 @@ void setupWebServer() {
     html += getHtmlFooter();
     request->send(200, "text/html", html);
   });
-  
-  setupWifiSaveHandler();
-  
+    
   // JSON-Editor - mit angepasstem Code für Datei-Parameter
   server.on("/edit", HTTP_GET, [](AsyncWebServerRequest *request) {
     String fileName = "";
@@ -1027,14 +1025,121 @@ void setupWebServerAP() {
     html += getHtmlFooter();
     request->send(200, "text/html", html);
     DEBUG_INFO("GET / Anfrage beantwortet");
-});
+  });
+
+  // Spezifischer Handler für /save-wifi im AP-Modus
+  server.on("/save-wifi", HTTP_POST, [](AsyncWebServerRequest *request) {
+    DEBUG_INFO("AP-Modus: POST /save-wifi Anfrage empfangen");
+    
+    if (!request->hasParam("ssid", true) || !request->hasParam("password", true)) {
+      DEBUG_ERROR("Fehler: SSID oder Passwort fehlt in der Anfrage");
+      request->send(400, "text/plain", "Fehler: SSID oder Passwort fehlt");
+      return;
+    }
+    
+    String ssid = request->getParam("ssid", true)->value();
+    String password = request->getParam("password", true)->value();
+    
+    DEBUG_INFO("Neue WLAN-Einstellungen empfangen: SSID=" + ssid);
+    
+    // Speichern der Konfiguration
+    JsonDocument config;
+    
+    // Bestehende Konfiguration laden oder neue erstellen
+    if (!SPIFFS.begin(false)) {
+      DEBUG_ERROR("SPIFFS konnte nicht initialisiert werden!");
+      request->send(500, "text/plain", "Fehler: SPIFFS konnte nicht initialisiert werden");
+      return;
+    }
+    
+    // Bestehende Konfiguration laden oder neue erstellen
+    bool configExists = SPIFFS.exists("/config.json");
+    if (configExists) {
+      bool loadSuccess = configManager.loadJsonConfig("/config.json", config);
+      DEBUG_INFO("Bestehende Konfiguration laden: " + String(loadSuccess ? "erfolgreich" : "fehlgeschlagen"));
+      
+      if (!loadSuccess) {
+        // Wenn das Laden fehlschlägt, erstellen wir eine neue Konfiguration
+        config = JsonDocument();
+      }
+    } else {
+      DEBUG_INFO("Keine bestehende Konfiguration gefunden, erstelle neue");
+      config = JsonDocument();
+    }
+    
+    // Sicherstellen, dass wlan-Objekt existiert
+    if (!config["wlan"].is<JsonObject>()) {
+      config["wlan"] = JsonObject();
+      DEBUG_INFO("Neues wlan-Objekt in Konfiguration erstellt");
+    }
+    
+    // WLAN-Einstellungen aktualisieren
+    config["wlan"]["ssid"] = ssid;
+    config["wlan"]["password"] = password;
+    
+    // Konfiguration speichern
+    bool saved = configManager.saveJsonConfig("/config.json", config);
+    
+    // Überprüfen, ob die Datei tatsächlich existiert und Inhalt hat
+    bool fileExists = SPIFFS.exists("/config.json");
+    File checkFile = SPIFFS.open("/config.json", "r");
+    size_t fileSize = checkFile ? checkFile.size() : 0;
+    if (checkFile) checkFile.close();
+    
+    DEBUG_INFO("Konfigurationsspeicherung: save=" + String(saved) + ", exists=" + String(fileExists) + ", size=" + String(fileSize));
+    
+    String html = HTML_HEADER;
+    
+    // HTML-sicheres Encoding der SSID für die Anzeige
+    String htmlSafeSSID = ssid;
+    htmlSafeSSID.replace("&", "&amp;");
+    htmlSafeSSID.replace("<", "&lt;");
+    htmlSafeSSID.replace(">", "&gt;");
+    htmlSafeSSID.replace("\"", "&quot;");
+    htmlSafeSSID.replace("'", "&#039;");
+    
+    html += "<h1>WLAN-Konfiguration " + String(saved ? "gespeichert" : "fehlgeschlagen") + "</h1>";
+    
+    if (saved) {
+      html += "<p>Der Solar Monitor wird jetzt neu gestartet und versucht, ";
+      html += "eine Verbindung mit <strong>" + htmlSafeSSID + "</strong> herzustellen.</p>";
+      html += "<p>Wenn die Verbindung fehlschlägt, wird der Access Point wieder aktiviert.</p>";
+      html += "<p>Bitte warte einen Moment...</p>";
+      html += "<script>setTimeout(function() { window.location.href = '/'; }, 20000);</script>";
+    } else {
+      html += "<p>Fehler beim Speichern der Konfiguration. Details:</p>";
+      html += "<p>Datei existiert: " + String(fileExists ? "Ja" : "Nein") + "</p>";
+      html += "<p>Dateigröße: " + String(fileSize) + " Bytes</p>";
+      html += "<p><a href='/' class='btn'>Zurück zur Konfiguration</a></p>";
+    }
+    
+    html += getHtmlFooter();
+    request->send(200, "text/html", html);
+    DEBUG_INFO("AP-Modus: POST /save-wifi Anfrage beantwortet");
+    
+    if (saved) {
+      // Neustart-Flag setzen und im loop() prüfen
+      restartFlag = true;
+      restartTime = millis() + 2000;  // 2 Sekunden Verzögerung vor Neustart
+      DEBUG_INFO("Neustart in 2 Sekunden angefordert...");
+    }
+  });
 
   // Im AP-Modus alle unbekannten Anfragen zur Konfigurationsseite umleiten (Captive Portal)
+  // WICHTIG: Ausnahme für /save-wifi hinzufügen
   server.onNotFound([](AsyncWebServerRequest *request) {
     DEBUG_INFO("Unbekannte Anfrage empfangen: " + String(request->url()));
     
     if (apModeActive) {
-      // Bei Captive Portal alle Anfragen zur Konfigurationsseite umleiten
+      // Prüfen, ob es sich um eine /save-wifi Anfrage handelt - diese NICHT umleiten
+      String url = request->url();
+      if (url == "/save-wifi") {
+        DEBUG_INFO("URL /save-wifi erkannt - wird NICHT umgeleitet");
+        // Die Anfrage wird vom spezifischen Handler oben verarbeitet
+        return;
+      }
+      
+      // Bei Captive Portal alle anderen Anfragen zur Konfigurationsseite umleiten
       DEBUG_INFO("Leite um zu Captive Portal");
       request->redirect("http://" + WiFi.softAPIP().toString());
     } else {
