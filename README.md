@@ -44,7 +44,7 @@ Der ESP32 Solar Monitor ist eine umfassende Lösung zur Visualisierung und Über
 - WLAN-Konnektivität für drahtlose Integration
 - MQTT-Protokoll zur Datenkommunikation
 - SPIFFS-Dateisystem für Konfigurationsdateien
-- Freier HEAP-Speicher: ca. 218 KB
+- Freier HEAP-Speicher: ca. 180 KB
 
 ## Hardware & Pin-Belegung
 
