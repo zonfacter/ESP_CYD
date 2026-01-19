@@ -203,7 +203,7 @@ void MenuSystem::drawMenuItem(int index, int screenIndex, bool selected) {
     // Aktuell berührt
     itemColor = HIGHLIGHT_COLOR;
     textColor = TEXT_COLOR;
-  } else if (index == selectedMenuItem && currentTab == currentTab) {
+  } else if (index == selectedMenuItem) {
     // Vorher ausgewählt
     itemColor = BORDER_COLOR;
     textColor = TEXT_COLOR;
