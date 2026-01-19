@@ -59,10 +59,8 @@ public:
   }
 };
 
-// Statische Membervariablen initialisieren
-SemaphoreHandle_t DisplayLock::displayMutex = NULL;
-SemaphoreHandle_t DisplayLock::touchMutex = NULL;
-bool DisplayLock::initialized = false;
+// Statische Membervariablen - Definition in DisplayLock.cpp
+// (Hier nur Deklaration)
 
 // RAII-Helper für automatisches Entsperren
 class DisplayGuard {

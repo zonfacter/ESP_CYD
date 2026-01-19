@@ -83,24 +83,37 @@ void DataManager::updateFromMqtt(MqttManager& mqttManager) {
       
       // Historischen Datenpunkt hinzufügen
       addHistoricalDataPoint();
+    }
+  } else {
+    DEBUG_WARNING("Konnte Daten-Mutex nicht sperren in updateFromMqtt");
   }
 }
 
 bool DataManager::saveDataToCache() {
   // Speichere aktuelle Daten im SPIFFS (bereits initialisiert in setup)
-  // JSON-Dokument erstellen
+  // Thread-Sicherheit: Mutex sperren für Datenzugriff
+  SolarData dataCopy;
+  if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+    dataCopy = data;  // Kopie erstellen
+    xSemaphoreGive(dataMutex);
+  } else {
+    DEBUG_WARNING("Konnte Daten-Mutex nicht sperren in saveDataToCache");
+    return false;
+  }
+  
+  // JSON-Dokument erstellen (mit Kopie der Daten, kein Mutex nötig)
   JsonDocument doc;
   
   // Daten hinzufügen
   doc["timestamp"] = millis();
-  doc["batterySOC"] = data.batterySOC;
-  doc["pvPower"] = data.pvPower;
-  doc["gridPower"] = data.gridPower;
-  doc["loadPower"] = data.loadPower;
-  doc["batteryPower"] = data.batteryPower;
-  doc["dailyYield"] = data.dailyYield;
-  doc["batteryVoltage"] = data.batteryVoltage;
-  doc["autarky"] = data.autarky;
+  doc["batterySOC"] = dataCopy.batterySOC;
+  doc["pvPower"] = dataCopy.pvPower;
+  doc["gridPower"] = dataCopy.gridPower;
+  doc["loadPower"] = dataCopy.loadPower;
+  doc["batteryPower"] = dataCopy.batteryPower;
+  doc["dailyYield"] = dataCopy.dailyYield;
+  doc["batteryVoltage"] = dataCopy.batteryVoltage;
+  doc["autarky"] = dataCopy.autarky;
   
   // Datei zum Schreiben öffnen
   File file = SPIFFS.open("/solar_data_cache.json", "w");

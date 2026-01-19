@@ -1159,10 +1159,7 @@ void setupWebServerAP() {
 
 // Diese Funktion in WebServer.cpp nach setupWebServerAP() einfügen
 void printSpiffsInfo() {
-  // SPIFFS bereits initialisiert
-    return;
-  }
-  
+  // SPIFFS bereits initialisiert in setup
   DEBUG_INFO("SPIFFS-Informationen:");
   DEBUG_INFO("Gesamtspeicher: " + String(SPIFFS.totalBytes() / 1024) + " KB");
   DEBUG_INFO("Verwendeter Speicher: " + String(SPIFFS.usedBytes() / 1024) + " KB");
