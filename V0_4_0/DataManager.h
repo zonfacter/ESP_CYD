@@ -82,18 +82,8 @@ public:
   // Getter - Direkte Referenz (ACHTUNG: Nur aus Main-Thread verwenden!)
   SolarData& getData() { return data; }
   
-  // Thread-sichere Getter
-  SolarData getDataCopy() {
-    SolarData copy;
-    if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-      copy = data;
-      xSemaphoreGive(dataMutex);
-    } else {
-      DEBUG_WARNING("Konnte Daten-Mutex nicht sperren in getDataCopy - Verwende Standardwerte");
-      // copy ist bereits mit Standardwerten initialisiert (Constructor)
-    }
-    return copy;
-  }
+  // Thread-sichere Getter (Implementierung in DataManager.cpp)
+  SolarData getDataCopy();
   
   // Historische Daten
   bool addHistoricalDataPoint();

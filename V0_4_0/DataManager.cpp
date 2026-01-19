@@ -134,6 +134,19 @@ bool DataManager::saveDataToCache() {
   return true;
 }
 
+// Thread-sichere Getter-Implementierung
+SolarData DataManager::getDataCopy() {
+  SolarData copy;
+  if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+    copy = data;
+    xSemaphoreGive(dataMutex);
+  } else {
+    DEBUG_WARNING("Konnte Daten-Mutex nicht sperren in getDataCopy - Verwende Standardwerte");
+    // copy ist bereits mit Standardwerten initialisiert (Constructor)
+  }
+  return copy;
+}
+
 bool DataManager::loadDataFromCache() {
   // Lade gespeicherte Daten aus SPIFFS (bereits initialisiert)
   if (!SPIFFS.exists("/solar_data_cache.json")) {

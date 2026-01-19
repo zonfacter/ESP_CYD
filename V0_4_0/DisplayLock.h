@@ -19,22 +19,16 @@ private:
   static bool initialized;
   
 public:
-  // Initialisierung der Mutexe
-  static void init() {
-    if (!initialized) {
-      displayMutex = xSemaphoreCreateMutex();
-      touchMutex = xSemaphoreCreateMutex();
-      initialized = true;
-      
-      if (displayMutex == NULL || touchMutex == NULL) {
-        Serial.println("[ERROR] Fehler beim Erstellen der Display-Mutexe!");
-      }
-    }
-  }
+  // Initialisierung der Mutexe (MUSS in setup() aufgerufen werden!)
+  static void init();
   
   // Display sperren (mit Timeout)
+  // WICHTIG: init() muss vorher aufgerufen worden sein!
   static bool lockDisplay(TickType_t timeout = portMAX_DELAY) {
-    if (!initialized) init();
+    if (displayMutex == NULL) {
+      Serial.println("[ERROR] DisplayLock nicht initialisiert! Rufe init() in setup() auf.");
+      return false;
+    }
     return xSemaphoreTake(displayMutex, timeout) == pdTRUE;
   }
   
@@ -46,8 +40,12 @@ public:
   }
   
   // Touch sperren (mit Timeout)
+  // WICHTIG: init() muss vorher aufgerufen worden sein!
   static bool lockTouch(TickType_t timeout = portMAX_DELAY) {
-    if (!initialized) init();
+    if (touchMutex == NULL) {
+      Serial.println("[ERROR] DisplayLock nicht initialisiert! Rufe init() in setup() auf.");
+      return false;
+    }
     return xSemaphoreTake(touchMutex, timeout) == pdTRUE;
   }
   
