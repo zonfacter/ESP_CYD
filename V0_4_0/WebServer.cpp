@@ -1045,13 +1045,7 @@ void setupWebServerAP() {
     // Speichern der Konfiguration
     JsonDocument config;
     
-    // Bestehende Konfiguration laden oder neue erstellen
-    if (!SPIFFS.begin(false)) {
-      DEBUG_ERROR("SPIFFS konnte nicht initialisiert werden!");
-      request->send(500, "text/plain", "Fehler: SPIFFS konnte nicht initialisiert werden");
-      return;
-    }
-    
+    // SPIFFS bereits initialisiert
     // Bestehende Konfiguration laden oder neue erstellen
     bool configExists = SPIFFS.exists("/config.json");
     if (configExists) {
@@ -1163,114 +1157,9 @@ void setupWebServerAP() {
 }
 
 
-
-// Eigenständige Funktion für den WLAN-Speicher-Handler
-void setupWifiSaveHandler() {
-  server.on("/save-wifi", HTTP_POST, [](AsyncWebServerRequest *request) {
-    DEBUG_INFO("POST /save-wifi Anfrage empfangen");
-    
-    if (!request->hasParam("ssid", true) || !request->hasParam("password", true)) {
-      request->send(400, "text/plain", "SSID oder Passwort fehlt");
-      DEBUG_ERROR("SSID oder Passwort fehlt in der Anfrage");
-      return;
-    }
-    
-    String ssid = request->getParam("ssid", true)->value();
-    String password = request->getParam("password", true)->value();
-    
-    DEBUG_INFO("Neue WLAN-Einstellungen empfangen: SSID=" + ssid);
-    
-    // Speichern der Konfiguration
-    JsonDocument config;
-    
-    // Bestehende Konfiguration laden, falls vorhanden
-    if (!SPIFFS.begin(false)) {
-      DEBUG_ERROR("SPIFFS konnte nicht initialisiert werden beim Speichern der WLAN-Konfiguration!");
-      request->send(500, "text/plain", "Interner Serverfehler: SPIFFS-Initialisierung fehlgeschlagen");
-      return;
-    }
-    
-    // Bestehende Konfiguration laden oder neue erstellen
-    bool configExists = SPIFFS.exists("/config.json");
-    if (configExists) {
-      bool loadSuccess = configManager.loadJsonConfig("/config.json", config);
-      DEBUG_INFO("Bestehende Konfiguration laden: " + String(loadSuccess ? "erfolgreich" : "fehlgeschlagen"));
-      
-      if (!loadSuccess) {
-        // Wenn das Laden fehlschlägt, erstellen wir eine neue Konfiguration
-        config = JsonDocument();
-      }
-    } else {
-      DEBUG_INFO("Keine bestehende Konfiguration gefunden, erstelle neue");
-      config = JsonDocument();
-    }
-    
-    // Sicherstellen, dass wlan-Objekt existiert
-    if (!config["wlan"].is<JsonObject>()) {
-      config["wlan"] = JsonObject();
-      DEBUG_INFO("Neues wlan-Objekt in Konfiguration erstellt");
-    }
-    
-    // WLAN-Einstellungen aktualisieren
-    config["wlan"]["ssid"] = ssid;
-    config["wlan"]["password"] = password;
-    
-    // Konfiguration speichern und Ergebnis mehrfach loggen
-    bool saved = configManager.saveJsonConfig("/config.json", config);
-    
-    // Überprüfen, ob die Datei tatsächlich existiert und Inhalt hat
-    bool fileExists = SPIFFS.exists("/config.json");
-    File checkFile = SPIFFS.open("/config.json", "r");
-    size_t fileSize = checkFile ? checkFile.size() : 0;
-    if (checkFile) checkFile.close();
-    
-    DEBUG_INFO("Konfigurationsspeicherung: save=" + String(saved) + ", exists=" + String(fileExists) + ", size=" + String(fileSize));
-    
-    String html = HTML_HEADER;
-    
-    // HTML-sicheres Encoding der SSID für die Anzeige
-    String htmlSafeSSID = ssid;
-    htmlSafeSSID.replace("&", "&amp;");
-    htmlSafeSSID.replace("<", "&lt;");
-    htmlSafeSSID.replace(">", "&gt;");
-    htmlSafeSSID.replace("\"", "&quot;");
-    htmlSafeSSID.replace("'", "&#039;");
-    
-    html += "<h1>WLAN-Konfiguration " + String(saved ? "gespeichert" : "fehlgeschlagen") + "</h1>";
-    
-    if (saved) {
-      html += "<p>Der Solar Monitor wird jetzt neu gestartet und versucht, ";
-      html += "eine Verbindung mit <strong>" + htmlSafeSSID + "</strong> herzustellen.</p>";
-      html += "<p>Wenn die Verbindung fehlschlägt, wird der Access Point wieder aktiviert.</p>";
-      html += "<p>Bitte warte einen Moment...</p>";
-      html += "<script>setTimeout(function() { window.location.href = '/'; }, 20000);</script>";
-    } else {
-      html += "<p>Fehler beim Speichern der Konfiguration. Details:</p>";
-      html += "<p>Datei existiert: " + String(fileExists ? "Ja" : "Nein") + "</p>";
-      html += "<p>Dateigröße: " + String(fileSize) + " Bytes</p>";
-      html += "<p><a href='/' class='btn'>Zurück zur Konfiguration</a></p>";
-    }
-    
-    html += getHtmlFooter();
-    request->send(200, "text/html", html);
-    DEBUG_INFO("POST /save-wifi Anfrage beantwortet");
-    
-    if (saved) {
-      // Neustart-Flag setzen und im loop() prüfen
-      restartFlag = true;
-      restartTime = millis() + 2000;  // 2 Sekunden Verzögerung vor Neustart
-      DEBUG_INFO("Neustart in 2 Sekunden angefordert...");
-    }
-  });
-}
-
 // Diese Funktion in WebServer.cpp nach setupWebServerAP() einfügen
 void printSpiffsInfo() {
-  if (!SPIFFS.begin(false)) {
-    DEBUG_ERROR("SPIFFS konnte nicht initialisiert werden!");
-    return;
-  }
-  
+  // SPIFFS bereits initialisiert in setup
   DEBUG_INFO("SPIFFS-Informationen:");
   DEBUG_INFO("Gesamtspeicher: " + String(SPIFFS.totalBytes() / 1024) + " KB");
   DEBUG_INFO("Verwendeter Speicher: " + String(SPIFFS.usedBytes() / 1024) + " KB");

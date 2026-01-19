@@ -112,14 +112,12 @@ void setup() {
     }
     
     if (WiFi.status() == WL_CONNECTED) {
-
-      DEBUG_PRINTLN("WLAN-Verbindung Timeout erreicht!");
-      DEBUG_PRINT("Letzter Status: ");
-      DEBUG_PRINTLN(WiFi.status());
-      // Status-Codes: 0=IDLE, 1=NO_SSID_AVAIL, 3=CONNECTED, 4=CONNECT_FAILED, 6=DISCONNECTED
-      
+      DEBUG_PRINTLN("WLAN-Verbindung erfolgreich!");
+      DEBUG_PRINT("IP-Adresse: ");
+      DEBUG_PRINTLN(WiFi.localIP());
       DEBUG_PRINT("RSSI: ");
       DEBUG_PRINTLN(WiFi.RSSI()); // Signalstärke, falls verfügbar
+      
       tft.println("\nVerbunden!");
       tft.setCursor(80, tft.getCursorY() + 10);
       tft.print("IP: ");

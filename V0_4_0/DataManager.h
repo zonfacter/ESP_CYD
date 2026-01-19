@@ -10,6 +10,10 @@
 #include <ArduinoJson.h>
 #include "config.h"
 
+// FreeRTOS Semaphore für Thread-Sicherheit
+#include <freertos/FreeRTOS.h>
+#include <freertos/semphr.h>
+
 // Vorwärtsdeklaration der MQTT-Manager-Klasse
 class MqttManager;
 
@@ -52,6 +56,9 @@ private:
   unsigned long lastUpdate = 0;
   unsigned long lastCacheUpdate = 0;
   
+  // Mutex für Thread-Sicherheit
+  SemaphoreHandle_t dataMutex;
+  
   // Historische Daten speichern
   static const int MAX_HISTORY_ENTRIES = 48; // 1 Eintrag pro Stunde für einen Tag
   HistoricalData history[MAX_HISTORY_ENTRIES];
@@ -61,7 +68,7 @@ private:
   bool saveDataToCache();
   bool loadDataFromCache();
 
-  bool checkStorageSpace();  
+  bool checkStorageSpace();
 public:
   DataManager();
   
@@ -72,8 +79,11 @@ public:
   // Daten aus dem Cache laden, falls MQTT nicht verfügbar
   bool checkAndLoadCachedData();
   
-  // Getter
+  // Getter - Direkte Referenz (ACHTUNG: Nur aus Main-Thread verwenden!)
   SolarData& getData() { return data; }
+  
+  // Thread-sichere Getter (Implementierung in DataManager.cpp)
+  SolarData getDataCopy();
   
   // Historische Daten
   bool addHistoricalDataPoint();

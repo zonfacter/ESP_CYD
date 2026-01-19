@@ -21,6 +21,9 @@ public:
   // SPIFFS initialisieren
   bool begin();
   
+  // SPIFFS-Status prüfen
+  bool isInitialized() const { return spiffsInitialized; }
+  
   // JSON-Datei laden
   bool loadJsonConfig(const String &filename, JsonDocument &doc);
   

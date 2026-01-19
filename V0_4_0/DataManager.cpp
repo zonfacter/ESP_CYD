@@ -9,6 +9,12 @@
 DataManager dataManager;
 
 DataManager::DataManager() {
+  // Mutex für Thread-Sicherheit erstellen
+  dataMutex = xSemaphoreCreateMutex();
+  if (dataMutex == NULL) {
+    DEBUG_ERROR("Fehler beim Erstellen des DataManager-Mutex!");
+  }
+  
   // Konstruktor
   // Versuche, Daten aus dem Cache zu laden
   loadDataFromCache();
@@ -17,84 +23,97 @@ DataManager::DataManager() {
 }
 
 void DataManager::updateFromMqtt(MqttManager& mqttManager) {
-  // Daten aus MQTT Topics extrahieren
-  // Zunächst als String holen und dann parsen
-  
-  String batterySOCStr = mqttManager.getValue("battery_soc");
-  if (batterySOCStr != "N/A") {
-    data.batterySOC = batterySOCStr.toFloat();
-  }
-  
-  String pvPowerStr = mqttManager.getValue("pv_power");
-  if (pvPowerStr != "N/A") {
-    data.pvPower = pvPowerStr.toFloat();
-  }
-  
-  String gridPowerStr = mqttManager.getValue("grid_power");
-  if (gridPowerStr != "N/A") {
-    data.gridPower = gridPowerStr.toFloat();
-  }
-  
-  String loadPowerStr = mqttManager.getValue("load_power");
-  if (loadPowerStr != "N/A") {
-    data.loadPower = loadPowerStr.toFloat();
-  }
-  
-  String batteryPowerStr = mqttManager.getValue("battery_power");
-  if (batteryPowerStr != "N/A") {
-    data.batteryPower = batteryPowerStr.toFloat();
-  }
-  
-  String batteryVoltageStr = mqttManager.getValue("battery_voltage");
-  if (batteryVoltageStr != "N/A") {
-    data.batteryVoltage = batteryVoltageStr.toFloat();
-  }
-  
-  String dailyYieldStr = mqttManager.getValue("daily_yield");
-  if (dailyYieldStr != "N/A") {
-    data.dailyYield = dailyYieldStr.toFloat();
-  }
-  
-  // Autarkie berechnen
-  if (data.loadPower > 0) {
-    float selfSupply = data.pvPower + abs(min(0.0f, data.batteryPower));
-    data.autarky = min(selfSupply / data.loadPower * 100, 100.0f);
-  } else {
-    data.autarky = 100.0f;
-  }
-  
-  lastUpdate = millis();
-  
-  // Daten im Cache speichern (alle 5 Minuten)
-  if (millis() - lastCacheUpdate > 300000) { // 5 Minuten
-    saveDataToCache();
-    lastCacheUpdate = millis();
+  // Thread-Sicherheit: Mutex sperren
+  if (xSemaphoreTake(dataMutex, portMAX_DELAY) == pdTRUE) {
+    // Daten aus MQTT Topics extrahieren
+    // Zunächst als String holen und dann parsen
     
-    // Historischen Datenpunkt hinzufügen
-    addHistoricalDataPoint();
+    String batterySOCStr = mqttManager.getValue("battery_soc");
+    if (batterySOCStr != "N/A") {
+      data.batterySOC = batterySOCStr.toFloat();
+    }
+    
+    String pvPowerStr = mqttManager.getValue("pv_power");
+    if (pvPowerStr != "N/A") {
+      data.pvPower = pvPowerStr.toFloat();
+    }
+    
+    String gridPowerStr = mqttManager.getValue("grid_power");
+    if (gridPowerStr != "N/A") {
+      data.gridPower = gridPowerStr.toFloat();
+    }
+    
+    String loadPowerStr = mqttManager.getValue("load_power");
+    if (loadPowerStr != "N/A") {
+      data.loadPower = loadPowerStr.toFloat();
+    }
+    
+    String batteryPowerStr = mqttManager.getValue("battery_power");
+    if (batteryPowerStr != "N/A") {
+      data.batteryPower = batteryPowerStr.toFloat();
+    }
+    
+    String batteryVoltageStr = mqttManager.getValue("battery_voltage");
+    if (batteryVoltageStr != "N/A") {
+      data.batteryVoltage = batteryVoltageStr.toFloat();
+    }
+    
+    String dailyYieldStr = mqttManager.getValue("daily_yield");
+    if (dailyYieldStr != "N/A") {
+      data.dailyYield = dailyYieldStr.toFloat();
+    }
+    
+    // Autarkie berechnen
+    if (data.loadPower > 0) {
+      float selfSupply = data.pvPower + abs(min(0.0f, data.batteryPower));
+      data.autarky = min(selfSupply / data.loadPower * 100, 100.0f);
+    } else {
+      data.autarky = 100.0f;
+    }
+    
+    lastUpdate = millis();
+    
+    // Mutex freigeben vor zeitintensiven Operationen
+    xSemaphoreGive(dataMutex);
+    
+    // Daten im Cache speichern (alle 5 Minuten)
+    if (millis() - lastCacheUpdate > 300000) { // 5 Minuten
+      saveDataToCache();
+      lastCacheUpdate = millis();
+      
+      // Historischen Datenpunkt hinzufügen
+      addHistoricalDataPoint();
+    }
+  } else {
+    DEBUG_WARNING("Konnte Daten-Mutex nicht sperren in updateFromMqtt");
   }
 }
 
 bool DataManager::saveDataToCache() {
-  // Speichere aktuelle Daten im SPIFFS
-  if (!SPIFFS.begin(false)) {
-    DEBUG_PRINTLN("SPIFFS konnte nicht initialisiert werden beim Cachen von Daten!");
+  // Speichere aktuelle Daten im SPIFFS (bereits initialisiert in setup)
+  // Thread-Sicherheit: Mutex sperren für Datenzugriff
+  SolarData dataCopy;
+  if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+    dataCopy = data;  // Kopie erstellen
+    xSemaphoreGive(dataMutex);
+  } else {
+    DEBUG_WARNING("Konnte Daten-Mutex nicht sperren in saveDataToCache");
     return false;
   }
   
-  // JSON-Dokument erstellen
+  // JSON-Dokument erstellen (mit Kopie der Daten, kein Mutex nötig)
   JsonDocument doc;
   
   // Daten hinzufügen
   doc["timestamp"] = millis();
-  doc["batterySOC"] = data.batterySOC;
-  doc["pvPower"] = data.pvPower;
-  doc["gridPower"] = data.gridPower;
-  doc["loadPower"] = data.loadPower;
-  doc["batteryPower"] = data.batteryPower;
-  doc["dailyYield"] = data.dailyYield;
-  doc["batteryVoltage"] = data.batteryVoltage;
-  doc["autarky"] = data.autarky;
+  doc["batterySOC"] = dataCopy.batterySOC;
+  doc["pvPower"] = dataCopy.pvPower;
+  doc["gridPower"] = dataCopy.gridPower;
+  doc["loadPower"] = dataCopy.loadPower;
+  doc["batteryPower"] = dataCopy.batteryPower;
+  doc["dailyYield"] = dataCopy.dailyYield;
+  doc["batteryVoltage"] = dataCopy.batteryVoltage;
+  doc["autarky"] = dataCopy.autarky;
   
   // Datei zum Schreiben öffnen
   File file = SPIFFS.open("/solar_data_cache.json", "w");
@@ -115,13 +134,21 @@ bool DataManager::saveDataToCache() {
   return true;
 }
 
-bool DataManager::loadDataFromCache() {
-  // Lade gespeicherte Daten aus SPIFFS
-  if (!SPIFFS.begin(false)) {
-    DEBUG_PRINTLN("SPIFFS konnte nicht initialisiert werden beim Laden aus dem Cache!");
-    return false;
+// Thread-sichere Getter-Implementierung
+SolarData DataManager::getDataCopy() {
+  SolarData copy;
+  if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+    copy = data;
+    xSemaphoreGive(dataMutex);
+  } else {
+    DEBUG_WARNING("Konnte Daten-Mutex nicht sperren in getDataCopy - Verwende Standardwerte");
+    // copy ist bereits mit Standardwerten initialisiert (Constructor)
   }
-  
+  return copy;
+}
+
+bool DataManager::loadDataFromCache() {
+  // Lade gespeicherte Daten aus SPIFFS (bereits initialisiert)
   if (!SPIFFS.exists("/solar_data_cache.json")) {
     DEBUG_PRINTLN("Keine Cache-Datei gefunden");
     return false;
@@ -215,12 +242,7 @@ bool DataManager::addHistoricalDataPoint() {
       }
     }
     
-    // Als JSON in SPIFFS speichern
-    if (!SPIFFS.begin(false)) {
-      DEBUG_ERROR("SPIFFS konnte nicht initialisiert werden beim Speichern der Historie!");
-      return false;
-    }
-    
+    // Als JSON in SPIFFS speichern (bereits initialisiert)
     // Rotierendes Logging - mehrere Dateien verwenden, um Datenverlust zu vermeiden
     static int fileIndex = 0;
     fileIndex = (fileIndex + 1) % 3;  // 3 Dateien rotierend verwenden
@@ -411,11 +433,7 @@ float DataManager::getAvgValueForToday(const String& field) {
 
 // Lade die historischen Daten aus dem SPIFFS beim Start
 bool DataManager::loadHistoricalDataFromStorage() {
-  if (!SPIFFS.begin(false)) {
-    DEBUG_PRINTLN("SPIFFS konnte nicht initialisiert werden beim Laden der Historie!");
-    return false;
-  }
-  
+  // SPIFFS bereits initialisiert in setup
   bool anyFileLoaded = false;
   
   // Versuche, die neueste der rotierenden Dateien zu laden

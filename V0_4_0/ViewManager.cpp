@@ -4,6 +4,7 @@
 
 #include "ViewManager.h"
 #include "MqttManager.h"
+#include "DisplayLock.h"  // Für Thread-sicheren Display-Zugriff
 #include <WiFi.h>
 
 // Externe Globale Variablen
@@ -67,6 +68,13 @@ ViewManager::ViewManager(TFT_eSPI &tft, DataManager &dataManager)
 }
 
 bool ViewManager::showView(const String &functionName) {
+  // Thread-sicherer Display-Zugriff mit RAII
+  DisplayGuard guard;
+  if (!guard.isLocked()) {
+    DEBUG_WARNING("Konnte Display-Mutex nicht sperren in showView");
+    return false;
+  }
+  
   currentView = functionName;
   
   // Bildschirm löschen
@@ -87,8 +95,8 @@ bool ViewManager::showView(const String &functionName) {
   // Setze den Flag für initialen Draw
   isInitialDraw = true;
   
-  // Speichere aktuelle Daten als Referenz
-  lastDrawnData = dataManager.getData();
+  // Speichere aktuelle Daten als Referenz (thread-safe copy)
+  lastDrawnData = dataManager.getDataCopy();
   
   // Prüfe, ob die Funktion existiert
   auto it = viewFunctions.find(functionName);

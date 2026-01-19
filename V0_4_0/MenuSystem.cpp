@@ -3,6 +3,7 @@
  */
 
 #include "MenuSystem.h"
+#include "DisplayLock.h"  // Für Thread-sicheren Display-Zugriff
 #include <SPIFFS.h>
 #include <ArduinoJson.h>
 #include "ConfigManager.h"
@@ -92,6 +93,13 @@ bool MenuSystem::loadFromJson(const String &filename) {
 }
 
 void MenuSystem::drawMenu(bool fullRedraw) {
+  // Thread-sicherer Display-Zugriff
+  DisplayGuard guard;
+  if (!guard.isLocked()) {
+    DEBUG_WARNING("Konnte Display-Mutex nicht sperren in drawMenu");
+    return;
+  }
+  
   if (fullRedraw || needsFullRedraw) {
     // Bildschirm löschen
     tft.fillScreen(BACKGROUND);
@@ -203,7 +211,7 @@ void MenuSystem::drawMenuItem(int index, int screenIndex, bool selected) {
     // Aktuell berührt
     itemColor = HIGHLIGHT_COLOR;
     textColor = TEXT_COLOR;
-  } else if (index == selectedMenuItem && currentTab == currentTab) {
+  } else if (index == selectedMenuItem) {
     // Vorher ausgewählt
     itemColor = BORDER_COLOR;
     textColor = TEXT_COLOR;
