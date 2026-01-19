@@ -431,6 +431,40 @@ void loop() {
     // MQTT-Verbindung aktualisieren - vor der Touch-Verarbeitung
     mqttManager.update();
     ioBrokerManager.update();
+  } else {
+    // WiFi-Reconnection Logic - versuche alle 30 Sekunden neu zu verbinden
+    static unsigned long lastReconnectAttempt = 0;
+    if (millis() - lastReconnectAttempt > 30000) {
+      lastReconnectAttempt = millis();
+      DEBUG_WARNING("WiFi getrennt - versuche Wiederverbindung...");
+      
+      if (WiFi.status() == WL_CONNECTED) {
+        // Status hat sich geändert, aber Flag war falsch
+        wifiConnected = true;
+        DEBUG_INFO("WiFi-Verbindung wiederhergestellt!");
+      } else {
+        // Versuche Reconnect
+        WiFi.reconnect();
+      }
+    }
+    
+    // Prüfe ob Reconnect erfolgreich war
+    if (WiFi.status() == WL_CONNECTED) {
+      wifiConnected = true;
+      DEBUG_INFO("WiFi erfolgreich wiederverbunden!");
+      
+      // Versuche MQTT auch wieder zu verbinden
+      if (!mqttConnected) {
+        JsonDocument mqttConfig;
+        if (configManager.loadJsonConfig("/config.json", mqttConfig)) {
+          if (mqttConfig["mqtt"].is<JsonObject>()) {
+            const char* mqtt_broker = mqttConfig["mqtt"]["broker"];
+            int mqtt_port = mqttConfig["mqtt"]["port"];
+            mqttConnected = mqttManager.begin(mqtt_broker, mqtt_port);
+          }
+        }
+      }
+    }
   }
 
   // Position des Herzens (z.B. in der oberen rechten Ecke)
