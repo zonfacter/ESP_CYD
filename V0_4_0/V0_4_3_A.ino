@@ -46,6 +46,7 @@
 #include "ViewManager.h"
 #include "IoBrokerManager.h"
 #include "WebServer.h"
+#include "DisplayLock.h"  // Thread-Sicherheit für Display/Touch
 
 //=====================================================================
 // HARDWARE-INITIALISIERUNG
@@ -143,6 +144,10 @@ void setup() {
   DEBUG_PRINTLN(APP_VERSION_FULL);
   DEBUG_PRINTLN("Build: " APP_BUILD_DATE " " APP_BUILD_TIME);
   DEBUG_PRINTLN("==========================================");
+  
+  // DisplayLock für Thread-Sicherheit initialisieren
+  DisplayLock::init();
+  DEBUG_PRINTLN("DisplayLock-Mutexe initialisiert");
   
   // WLAN vorbereitend initialisieren
   WiFi.persistent(false);  // Erst persistent ausschalten
